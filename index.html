@@ -85,18 +85,17 @@
           </select>
         </div>
 
-        <!-- 築年数フィルタ -->
+        <!-- 築年数フィルタ（1年単位） -->
         <div class="form-control mb-3">
           <label class="label py-0 mb-1">
             <span class="label-text text-xs font-medium">築年数</span>
           </label>
-          <select id="filter-age" class="select select-bordered select-sm w-full">
-            <option value="">すべて</option>
-            <option value="0-5">5年未満</option>
-            <option value="5-10">5〜10年</option>
-            <option value="10-20">10〜20年</option>
-            <option value="20+">20年以上</option>
-          </select>
+          <div class="flex items-center gap-1">
+            <input type="number" id="filter-age-min" class="input input-bordered input-sm w-20 text-center" placeholder="0" min="0" max="99" />
+            <span class="text-xs text-base-content/60">〜</span>
+            <input type="number" id="filter-age-max" class="input input-bordered input-sm w-20 text-center" placeholder="99" min="0" max="99" />
+            <span class="text-xs text-base-content/60">年</span>
+          </div>
         </div>
 
         <!-- 担当者フィルタ -->
@@ -349,22 +348,34 @@
 
   <!-- ===== モーダル：CSVインポート ===== -->
   <dialog id="modal-import" class="modal">
-    <div class="modal-box w-11/12 max-w-lg">
-      <h3 class="font-bold text-lg mb-4">CSVインポート</h3>
+    <div class="modal-box w-11/12 max-w-2xl">
+      <h3 class="font-bold text-lg mb-1">CSVインポート</h3>
+      <p class="text-xs text-base-content/50 mb-4">
+        住所からGoogleマップで自動的に座標を取得します。1000件で約2〜3分かかります。
+        <a href="data/import/sample.csv" download class="link link-primary ml-1">サンプルCSVをダウンロード</a>
+      </p>
+      <div class="text-xs bg-base-200 rounded p-2 mb-4 font-mono">
+        property_name, address, brand, is_developed, completed_at, person_in_charge, notes
+      </div>
       <div class="form-control mb-4">
-        <label class="label"><span class="label-text">CSVファイルを選択</span></label>
         <input type="file" id="input-csv" accept=".csv" class="file-input file-input-bordered file-input-sm w-full" />
       </div>
       <div id="import-preview" class="hidden">
-        <div class="divider text-sm">プレビュー（最初の5件）</div>
-        <div class="overflow-x-auto text-xs" id="import-preview-table"></div>
+        <div class="divider text-xs my-2">プレビュー（最初の5件）</div>
+        <div class="overflow-x-auto text-xs mb-2" id="import-preview-table"></div>
+        <p id="import-total-count" class="text-xs text-base-content/60 text-right"></p>
+      </div>
+      <div id="import-errors" class="hidden mb-3">
+        <div class="text-xs text-error font-semibold mb-1">CSVエラー</div>
+        <ul id="import-error-list" class="text-xs text-error list-disc list-inside max-h-24 overflow-y-auto"></ul>
       </div>
       <div id="import-progress" class="hidden mt-3">
         <progress class="progress progress-primary w-full" id="progress-bar" value="0" max="100"></progress>
-        <p class="text-xs text-center mt-1" id="progress-text">インポート中...</p>
+        <p class="text-xs text-center mt-1" id="progress-text">準備中...</p>
       </div>
+      <div id="import-result" class="hidden mt-3 text-sm text-center font-semibold"></div>
       <div class="modal-action">
-        <button type="button" class="btn btn-ghost" onclick="document.getElementById('modal-import').close()">キャンセル</button>
+        <button type="button" id="btn-cancel-import" class="btn btn-ghost">キャンセル</button>
         <button id="btn-do-import" class="btn btn-primary" disabled>インポート開始</button>
       </div>
     </div>
@@ -397,6 +408,6 @@
   ></script>
 
   <!-- アプリ本体（ES modules） -->
-  <script type="module" src="src/main.js?v=4"></script>
+  <script type="module" src="src/main.js?v=5"></script>
 </body>
 </html>

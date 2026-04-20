@@ -1,9 +1,9 @@
 /**
  * ui.js — UI共通処理（パネル開閉・イベント登録）
  */
-import { calcAge } from './map.js?v=4';
+import { calcAge } from './map.js?v=5';
 import { getMaintenanceByProperty, deleteMaintenance } from './maintenance.js';
-import { getChangeLog } from './properties.js?v=4';
+import { getChangeLog } from './properties.js?v=5';
 
 let _currentProperty = null;
 let _onEdit              = null;
@@ -19,8 +19,12 @@ export function setupUI(onFilterChange = () => {}, onEdit = () => {}, onDelete =
   _onAddMaintenance = onAddMaintenance;
 
   // フィルタ変更（select）
-  ['filter-brand', 'filter-age', 'filter-person'].forEach((id) => {
+  ['filter-brand', 'filter-person'].forEach((id) => {
     document.getElementById(id)?.addEventListener('change', onFilterChange);
+  });
+  // 築年数（数値入力）
+  ['filter-age-min', 'filter-age-max'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('input', onFilterChange);
   });
   // フィルタ変更（text / checkbox）
   document.getElementById('filter-search')?.addEventListener('input', onFilterChange);
@@ -30,7 +34,8 @@ export function setupUI(onFilterChange = () => {}, onEdit = () => {}, onDelete =
   document.getElementById('btn-reset-filter')?.addEventListener('click', () => {
     document.getElementById('filter-search').value      = '';
     document.getElementById('filter-brand').value       = '';
-    document.getElementById('filter-age').value         = '';
+    document.getElementById('filter-age-min').value     = '';
+    document.getElementById('filter-age-max').value     = '';
     document.getElementById('filter-person').value      = '';
     document.getElementById('filter-developed').checked = false;
     onFilterChange();

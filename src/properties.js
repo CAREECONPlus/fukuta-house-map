@@ -1,8 +1,8 @@
 /**
  * properties.js — 物件データ表示・フィルタ
  */
-import { renderMarkers, panTo, calcAge, getMarkerColor } from './map.js?v=4';
-import { showDetailPanel } from './ui.js?v=4';
+import { renderMarkers, panTo, calcAge, getMarkerColor } from './map.js?v=5';
+import { showDetailPanel } from './ui.js?v=5';
 
 let allProperties = [];
 
@@ -78,7 +78,8 @@ export function deleteProperty(property) {
 export function applyFilterAndRender() {
   const searchVal    = (document.getElementById('filter-search')?.value    || '').trim().toLowerCase();
   const brandVal     = document.getElementById('filter-brand')?.value      || '';
-  const ageVal       = document.getElementById('filter-age')?.value        || '';
+  const ageMinVal    = document.getElementById('filter-age-min')?.value    || '';
+  const ageMaxVal    = document.getElementById('filter-age-max')?.value    || '';
   const personVal    = document.getElementById('filter-person')?.value     || '';
   const developedVal = document.getElementById('filter-developed')?.checked || false;
 
@@ -91,12 +92,10 @@ export function applyFilterAndRender() {
     if (brandVal     && p.brand            !== brandVal)    return false;
     if (personVal    && p.person_in_charge !== personVal)   return false;
     if (developedVal && !p.is_developed)                   return false;
-    if (ageVal) {
+    if (ageMinVal !== '' || ageMaxVal !== '') {
       const age = calcAgeYears(p.completed_at);
-      if (ageVal === '0-5'   && !(age < 5))                return false;
-      if (ageVal === '5-10'  && !(age >= 5  && age < 10))  return false;
-      if (ageVal === '10-20' && !(age >= 10 && age < 20))  return false;
-      if (ageVal === '20+'   && !(age >= 20))              return false;
+      if (ageMinVal !== '' && age < Number(ageMinVal))     return false;
+      if (ageMaxVal !== '' && age > Number(ageMaxVal))     return false;
     }
     return true;
   });
