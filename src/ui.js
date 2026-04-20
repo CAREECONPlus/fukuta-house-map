@@ -1,23 +1,19 @@
 /**
  * ui.js — UI共通処理（パネル開閉・イベント登録）
  */
-import { calcAge } from './map.js?v=3';
-import { getMaintenanceByProperty, deleteMaintenance } from './maintenance.js?v=3';
-import { getChangeLog } from './properties.js?v=3';
+import { calcAge } from './map.js?v=4';
+import { getMaintenanceByProperty, deleteMaintenance } from './maintenance.js';
+import { getChangeLog } from './properties.js?v=4';
 
 let _currentProperty = null;
 let _onEdit              = null;
 let _onDelete            = null;
-let _onAddMaintenance    = null; // (propertyId, data) => void
+let _onAddMaintenance    = null; // (propertyId, data) => Promise<void>
 
 /**
  * UIイベントをまとめて設定する
- * @param {Function} onFilterChange
- * @param {Function} onEdit            - (property) => void
- * @param {Function} onDelete          - (property) => void
- * @param {Function} onAddMaintenance  - (propertyId, data) => void
  */
-export function setupUI(onFilterChange = () => {}, onEdit = () => {}, onDelete = () => {}, onAddMaintenance = () => {}) {
+export function setupUI(onFilterChange = () => {}, onEdit = () => {}, onDelete = () => {}, onAddMaintenance = async () => {}) {
   _onEdit           = onEdit;
   _onDelete         = onDelete;
   _onAddMaintenance = onAddMaintenance;
@@ -68,14 +64,23 @@ export function setupUI(onFilterChange = () => {}, onEdit = () => {}, onDelete =
   });
 
   // 点検履歴フォームの送信
-  document.getElementById('form-maintenance')?.addEventListener('submit', (e) => {
+  document.getElementById('form-maintenance')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const data = Object.fromEntries(new FormData(e.target));
-    _onAddMaintenance(data.property_id, data);
-    // パネルの点検履歴欄を再描画
-    if (_currentProperty) refreshMaintenanceSection(_currentProperty.id);
-    e.target.reset();
-    document.getElementById('modal-maintenance').close();
+    const btn = e.target.querySelector('[type="submit"]');
+    btn.disabled = true;
+    btn.textContent = '保存中...';
+    try {
+      const data = Object.fromEntries(new FormData(e.target));
+      await _onAddMaintenance(data.property_id, data);
+      if (_currentProperty) await refreshMaintenanceSection(_currentProperty.id);
+      e.target.reset();
+      document.getElementById('modal-maintenance').close();
+    } catch (err) {
+      alert('保存に失敗しました: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '記録する';
+    }
   });
 
   // 物件追加モーダル（タイトル・ボタンをリセット）
@@ -162,7 +167,9 @@ function _renderDetailContent(property) {
         <i data-lucide="plus" class="w-3 h-3"></i>記録する
       </button>
     </div>
-    <div id="maintenance-list" class="space-y-2"></div>
+    <div id="maintenance-list" class="space-y-2">
+      <p class="text-xs text-base-content/40 text-center py-3">読み込み中...</p>
+    </div>
   `;
 
   // 「記録する」ボタン
@@ -174,13 +181,19 @@ function _renderDetailContent(property) {
 }
 
 /**
- * 点検履歴セクションを再描画する
+ * 点検履歴セクションを再描画する（非同期）
  */
-function refreshMaintenanceSection(propertyId) {
+async function refreshMaintenanceSection(propertyId) {
   const listEl = document.getElementById('maintenance-list');
   if (!listEl) return;
 
-  const records = getMaintenanceByProperty(propertyId);
+  let records;
+  try {
+    records = await getMaintenanceByProperty(propertyId);
+  } catch (err) {
+    listEl.innerHTML = `<p class="text-xs text-error text-center py-3">読み込みエラー: ${escHtml(err.message)}</p>`;
+    return;
+  }
 
   if (records.length === 0) {
     listEl.innerHTML = `
@@ -215,11 +228,17 @@ function refreshMaintenanceSection(propertyId) {
 
   // 点検履歴削除ボタン
   listEl.querySelectorAll('[data-delete-maintenance]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const recordId    = btn.getAttribute('data-delete-maintenance');
-      const propId      = btn.getAttribute('data-property-id');
-      deleteMaintenance(propId, recordId);
-      refreshMaintenanceSection(propId);
+    btn.addEventListener('click', async () => {
+      const recordId = btn.getAttribute('data-delete-maintenance');
+      const propId   = btn.getAttribute('data-property-id');
+      btn.disabled = true;
+      try {
+        await deleteMaintenance(propId, recordId);
+        await refreshMaintenanceSection(propId);
+      } catch (err) {
+        alert('削除に失敗しました: ' + err.message);
+        btn.disabled = false;
+      }
       if (typeof lucide !== 'undefined') lucide.createIcons();
     });
   });
@@ -234,7 +253,6 @@ function openMaintenanceForm(propertyId) {
   const form = document.getElementById('form-maintenance');
   form?.reset();
   form.querySelector('[name="property_id"]').value     = propertyId;
-  // デフォルトで今日の日付をセット
   form.querySelector('[name="maintenance_date"]').value =
     new Date().toISOString().slice(0, 10);
   document.getElementById('modal-maintenance').showModal();
@@ -243,7 +261,7 @@ function openMaintenanceForm(propertyId) {
 /**
  * 詳細モーダルを開く
  */
-function openDetailModal(property) {
+async function openDetailModal(property) {
   const modal   = document.getElementById('modal-detail');
   const title   = document.getElementById('modal-detail-title');
   const content = document.getElementById('modal-detail-content');
@@ -264,7 +282,9 @@ function openDetailModal(property) {
     ['備考',     property.notes],
   ].filter(([, v]) => v);
 
-  const records = getMaintenanceByProperty(property.id);
+  // 点検履歴（非同期取得）
+  let records = [];
+  try { records = await getMaintenanceByProperty(property.id); } catch (_) {}
   const maintHtml = records.length === 0
     ? '<p class="text-xs text-base-content/40 py-2 text-center">点検履歴はありません</p>'
     : records.map((r) => `

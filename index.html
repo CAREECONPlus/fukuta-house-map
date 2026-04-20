@@ -382,7 +382,9 @@
          GitHub Actions が自動で置換します（キーをコミットしないでください）。
        =================================================== -->
   <script>
-    window.__MAPS_API_KEY__ = 'YOUR_GOOGLE_MAPS_API_KEY';
+    window.__MAPS_API_KEY__     = 'YOUR_GOOGLE_MAPS_API_KEY';
+    window.__SUPABASE_URL__     = 'YOUR_SUPABASE_URL';
+    window.__SUPABASE_ANON_KEY__ = 'YOUR_SUPABASE_ANON_KEY';
 
     // Maps API の準備完了を Promise で通知する。
     // main.js 側で await window.__mapsReady して使う。
@@ -395,6 +397,6 @@
   ></script>
 
   <!-- アプリ本体（ES modules） -->
-  <script type="module" src="src/main.js?v=3"></script>
+  <script type="module" src="src/main.js?v=4"></script>
 </body>
 </html>

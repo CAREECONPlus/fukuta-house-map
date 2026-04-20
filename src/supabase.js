@@ -1,106 +1,115 @@
 /**
- * supabase.js — Supabase DB連携
+ * supabase.js — Supabase DB連携（静的ファイル対応）
  *
- * 環境変数:
- *   VITE_SUPABASE_URL      = https://xxxx.supabase.co
- *   VITE_SUPABASE_ANON_KEY = eyJ...
+ * index.html でプレースホルダーを設定し、
+ * GitHub Actions がデプロイ時に実際のキーに置換する。
  */
 
-// Vite 環境変数（GitHub Pages デプロイ時は環境変数を inject する）
-const SUPABASE_URL      = typeof import.meta !== 'undefined' && import.meta.env
-  ? import.meta.env.VITE_SUPABASE_URL      || ''
-  : '';
-const SUPABASE_ANON_KEY = typeof import.meta !== 'undefined' && import.meta.env
-  ? import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-  : '';
+const SUPABASE_URL      = window.__SUPABASE_URL__      || '';
+const SUPABASE_ANON_KEY = window.__SUPABASE_ANON_KEY__ || '';
+
+const HEADERS = {
+  apikey:          SUPABASE_ANON_KEY,
+  Authorization:   `Bearer ${SUPABASE_ANON_KEY}`,
+  'Content-Type':  'application/json',
+};
 
 /**
  * Supabase が設定済みか確認する
  */
 export function isSupabaseConfigured() {
-  return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+  return Boolean(
+    SUPABASE_URL &&
+    SUPABASE_ANON_KEY &&
+    SUPABASE_URL      !== 'YOUR_SUPABASE_URL' &&
+    SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY'
+  );
 }
 
-/**
- * Supabase REST API を呼び出す汎用ヘルパー
- * @param {string} table
- * @param {Object} [options]
- * @returns {Promise<Array>}
- */
-async function supabaseSelect(table, options = {}) {
-  if (!isSupabaseConfigured()) {
-    throw new Error('Supabase が設定されていません。.env を確認してください。');
-  }
+// ===== 内部ヘルパー =====
 
-  const url = new URL(`${SUPABASE_URL}/rest/v1/${table}`);
-  if (options.select) url.searchParams.set('select', options.select);
-  if (options.filter) {
-    Object.entries(options.filter).forEach(([k, v]) =>
-      url.searchParams.set(k, v)
-    );
-  }
+async function _get(path, params = {}) {
+  const url = new URL(`${SUPABASE_URL}/rest/v1/${path}`);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  const res = await fetch(url.toString(), { headers: HEADERS });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || `GET ${path} failed: ${res.status}`);
+  return res.json();
+}
 
+async function _post(path, body) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method:  'POST',
+    headers: { ...HEADERS, Prefer: 'return=representation' },
+    body:    JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || `POST ${path} failed: ${res.status}`);
+  return res.json();
+}
+
+async function _patch(path, filter, body) {
+  const url = new URL(`${SUPABASE_URL}/rest/v1/${path}`);
+  Object.entries(filter).forEach(([k, v]) => url.searchParams.set(k, v));
   const res = await fetch(url.toString(), {
-    headers: {
-      apikey:        SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-    },
+    method:  'PATCH',
+    headers: { ...HEADERS, Prefer: 'return=representation' },
+    body:    JSON.stringify(body),
   });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || `Supabase error: ${res.status}`);
-  }
-
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || `PATCH ${path} failed: ${res.status}`);
   return res.json();
 }
 
-/**
- * 物件一覧を取得する
- * @returns {Promise<Array>}
- */
+async function _delete(path, filter) {
+  const url = new URL(`${SUPABASE_URL}/rest/v1/${path}`);
+  Object.entries(filter).forEach(([k, v]) => url.searchParams.set(k, v));
+  const res = await fetch(url.toString(), {
+    method:  'DELETE',
+    headers: HEADERS,
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || `DELETE ${path} failed: ${res.status}`);
+}
+
+// ===== properties =====
+
 export async function fetchProperties() {
-  return supabaseSelect('properties', {
-    select: '*',
-    filter: { is_visible: 'eq.true', order: 'completed_at.desc' },
+  return _get('properties', {
+    select:     '*',
+    is_visible: 'eq.true',
+    order:      'completed_at.desc.nullslast',
   });
 }
 
-/**
- * 物件を1件取得する
- * @param {string} id
- */
-export async function fetchProperty(id) {
-  const rows = await supabaseSelect('properties', {
-    select: '*',
-    filter: { id: `eq.${id}` },
-  });
-  return rows[0] || null;
-}
-
-/**
- * 物件を追加する
- * @param {Object} data
- */
 export async function insertProperty(data) {
-  if (!isSupabaseConfigured()) throw new Error('Supabase が設定されていません。');
+  const rows = await _post('properties', data);
+  return Array.isArray(rows) ? rows[0] : rows;
+}
 
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/properties`, {
-    method: 'POST',
-    headers: {
-      apikey:        SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-      Prefer:        'return=representation',
-    },
-    body: JSON.stringify(data),
+export async function updatePropertyDb(id, data) {
+  const rows = await _patch('properties', { id: `eq.${id}` }, {
+    ...data,
+    updated_at: new Date().toISOString(),
   });
+  return Array.isArray(rows) ? rows[0] : rows;
+}
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || `Supabase insert error: ${res.status}`);
-  }
+export async function deletePropertyDb(id) {
+  await _delete('properties', { id: `eq.${id}` });
+}
 
-  return res.json();
+// ===== maintenance =====
+
+export async function fetchMaintenance(propertyId) {
+  return _get('maintenance', {
+    select:      '*',
+    property_id: `eq.${propertyId}`,
+    order:       'maintenance_date.desc',
+  });
+}
+
+export async function insertMaintenance(data) {
+  const rows = await _post('maintenance', data);
+  return Array.isArray(rows) ? rows[0] : rows;
+}
+
+export async function deleteMaintenanceDb(id) {
+  await _delete('maintenance', { id: `eq.${id}` });
 }
