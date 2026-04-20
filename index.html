@@ -350,10 +350,14 @@
   <dialog id="modal-import" class="modal">
     <div class="modal-box w-11/12 max-w-2xl max-h-[90vh] overflow-y-auto">
       <h3 class="font-bold text-lg mb-1">CSVインポート</h3>
-      <p class="text-xs text-base-content/50 mb-3">
+      <p class="text-xs text-base-content/60 mb-3">
         列名はどんな形式でも読み込めます。ファイルを選ぶと各列の対応先を設定できます。
-        <a href="data/import/sample.csv" download class="link link-primary ml-1">サンプルをダウンロード</a>
       </p>
+      <a href="data/import/sample.csv" download
+         class="inline-flex items-center gap-1 text-xs font-semibold text-white rounded px-3 py-1.5 mb-3"
+         style="background:#795548">
+        <i data-lucide="download" class="w-3.5 h-3.5"></i>サンプルCSVをダウンロード
+      </a>
 
       <!-- Step 1: ファイル選択 -->
       <div class="form-control mb-3">
