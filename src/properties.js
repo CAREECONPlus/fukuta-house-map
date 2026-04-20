@@ -1,8 +1,8 @@
 /**
  * properties.js — 物件データ表示・フィルタ
  */
-import { renderMarkers, panTo, calcAge, getMarkerColor } from './map.js?v=6';
-import { showDetailPanel } from './ui.js?v=6';
+import { renderMarkers, panTo, calcAge, getMarkerColor } from './map.js?v=7';
+import { showDetailPanel } from './ui.js?v=7';
 
 let allProperties = [];
 

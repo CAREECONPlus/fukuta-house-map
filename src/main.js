@@ -1,9 +1,9 @@
 /**
  * main.js — アプリ初期化
  */
-import { initMap } from './map.js?v=6';
-import { renderPropertyList, applyFilterAndRender, addProperty, updateProperty, deleteProperty } from './properties.js?v=6';
-import { setupUI } from './ui.js?v=6';
+import { initMap } from './map.js?v=7';
+import { renderPropertyList, applyFilterAndRender, addProperty, updateProperty, deleteProperty } from './properties.js?v=7';
+import { setupUI } from './ui.js?v=7';
 import { addMaintenance } from './maintenance.js';
 import {
   isSupabaseConfigured,

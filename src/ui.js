@@ -1,9 +1,10 @@
 /**
  * ui.js — UI共通処理（パネル開閉・イベント登録）
  */
-import { calcAge } from './map.js?v=6';
+import { calcAge } from './map.js?v=7';
 import { getMaintenanceByProperty, deleteMaintenance } from './maintenance.js';
-import { getChangeLog } from './properties.js?v=6';
+import { showRoute, clearRoute, openGoogleMapsNav } from './routes.js';
+import { getChangeLog } from './properties.js?v=7';
 
 let _currentProperty = null;
 let _onEdit              = null;
@@ -117,14 +118,17 @@ export function showDetailPanel(property) {
 
   const btnNav = document.getElementById('btn-navigate');
   if (property.address) {
-    btnNav.onclick  = () => {
-      const q = encodeURIComponent(property.address);
-      window.open(`https://www.google.com/maps/dir/?api=1&destination=${q}`, '_blank');
-    };
+    btnNav.onclick  = () => _startNavigation(property);
     btnNav.disabled = false;
   } else {
     btnNav.disabled = true;
   }
+
+  // 「閉じる」でルートクリア
+  document.getElementById('btn-clear-route')?.addEventListener('click', () => {
+    clearRoute();
+    document.getElementById('route-info').classList.add('hidden');
+  });
 
   document.getElementById('detail-panel').classList.remove('translate-x-full');
   if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -135,10 +139,43 @@ export function showDetailPanel(property) {
  */
 export function hideDetailPanel() {
   document.getElementById('detail-panel').classList.add('translate-x-full');
+  clearRoute();
+  document.getElementById('route-info')?.classList.add('hidden');
   _currentProperty = null;
 }
 
 // ===== 内部関数 =====
+
+function _startNavigation(property) {
+  const routeInfo    = document.getElementById('route-info');
+  const routeLoading = document.getElementById('route-loading');
+  const routeResult  = document.getElementById('route-result');
+  const routeError   = document.getElementById('route-error');
+
+  routeInfo.classList.remove('hidden');
+  routeLoading.classList.remove('hidden');
+  routeResult.classList.add('hidden');
+  routeError.classList.add('hidden');
+
+  showRoute(
+    property,
+    ({ distance, duration }) => {
+      routeLoading.classList.add('hidden');
+      document.getElementById('route-distance').textContent = distance;
+      document.getElementById('route-duration').textContent = duration;
+      document.getElementById('btn-open-maps').onclick = () => openGoogleMapsNav(property.address);
+      routeResult.classList.remove('hidden');
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    },
+    (errMsg) => {
+      routeLoading.classList.add('hidden');
+      routeError.textContent = errMsg;
+      routeError.classList.remove('hidden');
+    }
+  );
+}
+
+
 
 function _renderDetailContent(property) {
   const content = document.getElementById('detail-content');
