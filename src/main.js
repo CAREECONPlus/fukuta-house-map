@@ -1,9 +1,9 @@
 /**
  * main.js — アプリ初期化
  */
-import { initMap } from './map.js?v=5';
-import { renderPropertyList, applyFilterAndRender, addProperty, updateProperty, deleteProperty } from './properties.js?v=5';
-import { setupUI } from './ui.js?v=5';
+import { initMap } from './map.js?v=6';
+import { renderPropertyList, applyFilterAndRender, addProperty, updateProperty, deleteProperty } from './properties.js?v=6';
+import { setupUI } from './ui.js?v=6';
 import { addMaintenance } from './maintenance.js';
 import {
   isSupabaseConfigured,
@@ -12,7 +12,7 @@ import {
   updatePropertyDb,
   deletePropertyDb,
 } from './supabase.js';
-import { parseCsv, importProperties } from './import.js';
+import { FIELD_DEFS, analyzeCsv, parseCsvWithMapping, importProperties } from './import.js';
 
 // ===== デモ用サンプルデータ（Supabase 未接続時のみ使用）=====
 const DEMO_PROPERTIES = [
@@ -199,14 +199,14 @@ function openEditForm(property) {
 }
 
 /**
- * CSVインポートモーダルの処理
+ * CSVインポートモーダルの処理（列マッピング対応）
  */
 function setupImportForm() {
   const inputCsv    = document.getElementById('input-csv');
   const btnImport   = document.getElementById('btn-do-import');
   const btnCancel   = document.getElementById('btn-cancel-import');
-  const previewEl   = document.getElementById('import-preview');
-  const previewTbl  = document.getElementById('import-preview-table');
+  const mappingEl   = document.getElementById('import-mapping');
+  const mappingForm = document.getElementById('mapping-form');
   const totalCount  = document.getElementById('import-total-count');
   const errorsEl    = document.getElementById('import-errors');
   const errorList   = document.getElementById('import-error-list');
@@ -215,103 +215,131 @@ function setupImportForm() {
   const progressTxt = document.getElementById('progress-text');
   const resultEl    = document.getElementById('import-result');
 
-  let _parsedData = [];
+  let _csvText = '';
 
   // モーダルを開くたびにリセット
   document.getElementById('btn-import')?.addEventListener('click', () => {
+    _reset();
+    document.getElementById('modal-import').showModal();
+  });
+
+  function _reset() {
     inputCsv.value = '';
-    _parsedData = [];
-    previewEl.classList.add('hidden');
+    inputCsv.disabled = false;
+    _csvText = '';
+    mappingEl.classList.add('hidden');
     errorsEl.classList.add('hidden');
     progressEl.classList.add('hidden');
     resultEl.classList.add('hidden');
     btnImport.disabled = true;
-    document.getElementById('modal-import').showModal();
-  });
+    btnCancel.disabled = false;
+    btnCancel.textContent = 'キャンセル';
+    progressBar.value = 0;
+  }
 
   // キャンセルボタン
   btnCancel?.addEventListener('click', () => {
     document.getElementById('modal-import').close();
   });
 
-  // ファイル選択 → パース＆プレビュー
+  // ファイル選択 → 列マッピングUI生成
   inputCsv?.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    previewEl.classList.add('hidden');
+    mappingEl.classList.add('hidden');
     errorsEl.classList.add('hidden');
     resultEl.classList.add('hidden');
     btnImport.disabled = true;
-    _parsedData = [];
 
-    const text = await file.text();
-    const { data, errors } = parseCsv(text);
-    _parsedData = data;
+    _csvText = await file.text();
+    const { headers, autoMapping, rowCount, error } = analyzeCsv(_csvText);
 
-    // エラー表示
-    if (errors.length > 0) {
-      errorList.innerHTML = errors.map((e) => `<li>${e}</li>`).join('');
+    if (error) {
+      errorList.innerHTML = `<li>${error}</li>`;
       errorsEl.classList.remove('hidden');
+      return;
     }
 
-    // プレビュー表示
-    if (data.length > 0) {
-      const preview = data.slice(0, 5);
-      previewTbl.innerHTML = `
-        <table class="table table-xs w-full">
-          <thead><tr>
-            <th>物件名</th><th>住所</th><th>物件種別</th><th>施工完了</th><th>担当者</th>
-          </tr></thead>
-          <tbody>
-            ${preview.map((r) => `<tr>
-              <td class="max-w-[8rem] truncate">${r.property_name}</td>
-              <td class="max-w-[10rem] truncate">${r.address}</td>
-              <td>${r.brand || ''}</td>
-              <td>${r.completed_at?.substring(0,7) || ''}</td>
-              <td>${r.person_in_charge || ''}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>`;
-      totalCount.textContent = `全 ${data.length} 件を読み込みました`;
-      previewEl.classList.remove('hidden');
-      btnImport.disabled = false;
-    }
+    // 列マッピングUI構築
+    const noneOption = '<option value="">（使わない）</option>';
+    const colOptions = headers.map((h) => `<option value="${h}">${h}</option>`).join('');
+
+    mappingForm.innerHTML = FIELD_DEFS.map(({ key, label, required, hint }) => {
+      const selected = autoMapping[key] || '';
+      const options  = headers.map((h) =>
+        `<option value="${h}" ${h === selected ? 'selected' : ''}>${h}</option>`
+      ).join('');
+      return `
+        <div class="flex items-center gap-2">
+          <span class="text-xs w-28 flex-shrink-0 font-medium">
+            ${label}${required ? ' <span class="text-error">*</span>' : ''}
+          </span>
+          <select data-field="${key}" class="select select-bordered select-xs flex-1 min-w-0">
+            ${required ? '' : noneOption}
+            ${options}
+          </select>
+          <span class="text-xs text-base-content/40 hidden sm:block w-40 truncate">${hint}</span>
+        </div>`;
+    }).join('');
+
+    totalCount.textContent = `全 ${rowCount} 件のデータを検出`;
+    mappingEl.classList.remove('hidden');
+    btnImport.disabled = false;
   });
 
   // インポート開始
   btnImport?.addEventListener('click', async () => {
-    if (_parsedData.length === 0) return;
+    if (!_csvText) return;
     if (!isSupabaseConfigured()) {
       alert('Supabase が設定されていません。');
       return;
     }
 
-    btnImport.disabled   = true;
-    inputCsv.disabled    = true;
-    btnCancel.disabled   = true;
+    // マッピング収集
+    const mapping = {};
+    mappingForm.querySelectorAll('[data-field]').forEach((sel) => {
+      if (sel.value) mapping[sel.dataset.field] = sel.value;
+    });
+
+    if (!mapping.property_name || !mapping.address) {
+      errorList.innerHTML = '<li>「物件名」と「住所」は必ず対応列を選んでください</li>';
+      errorsEl.classList.remove('hidden');
+      return;
+    }
+    errorsEl.classList.add('hidden');
+
+    // パース
+    const { data, errors } = parseCsvWithMapping(_csvText, mapping);
+    if (errors.length > 0) {
+      errorList.innerHTML = errors.slice(0, 10).map((e) => `<li>${e}</li>`).join('');
+      errorsEl.classList.remove('hidden');
+    }
+    if (data.length === 0) return;
+
+    btnImport.disabled  = true;
+    inputCsv.disabled   = true;
+    btnCancel.disabled  = true;
     progressEl.classList.remove('hidden');
     resultEl.classList.add('hidden');
 
     const { success, failed, skipped } = await importProperties(
-      _parsedData,
+      data,
       ({ current, total, status }) => {
-        const pct = Math.round((current / total) * 100);
-        progressBar.value = pct;
-        progressTxt.textContent = `${current} / ${total} 件  ${status}`;
+        progressBar.value = Math.round((current / total) * 100);
+        progressTxt.textContent = `${current} / ${total} 件　${status}`;
       }
     );
 
-    // 完了
     progressTxt.textContent = '完了しました';
-    resultEl.textContent =
-      `✅ 成功 ${success} 件　❌ 失敗 ${failed} 件` +
-      (skipped > 0 ? `　⚠️ 座標取得失敗 ${skipped} 件（住所なしで登録）` : '');
+    resultEl.innerHTML =
+      `<span class="text-success">✅ 成功 ${success} 件</span>` +
+      (failed  > 0 ? `　<span class="text-error">❌ 失敗 ${failed} 件</span>` : '') +
+      (skipped > 0 ? `　<span class="text-warning">⚠️ 座標なし ${skipped} 件</span>` : '');
     resultEl.classList.remove('hidden');
-    btnCancel.disabled   = false;
+    btnCancel.disabled    = false;
     btnCancel.textContent = '閉じる';
 
-    // 一覧を再読み込み
     if (success > 0) await loadFromSupabase();
   });
 }

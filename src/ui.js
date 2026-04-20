@@ -1,9 +1,9 @@
 /**
  * ui.js — UI共通処理（パネル開閉・イベント登録）
  */
-import { calcAge } from './map.js?v=5';
+import { calcAge } from './map.js?v=6';
 import { getMaintenanceByProperty, deleteMaintenance } from './maintenance.js';
-import { getChangeLog } from './properties.js?v=5';
+import { getChangeLog } from './properties.js?v=6';
 
 let _currentProperty = null;
 let _onEdit              = null;
