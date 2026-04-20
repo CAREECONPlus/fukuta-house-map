@@ -189,7 +189,11 @@ function _renderDetailContent(property) {
     <dl class="space-y-2 text-sm">
       ${row('住所',     property.address)}
       ${row('物件種別', brandLabel)}
-      ${property.is_developed ? row('', '<span class="badge badge-sm badge-accent">自社開発物件</span>') : ''}
+      ${property.is_developed ? `
+        <div class="flex gap-2">
+          <dt class="text-base-content/50 w-20 flex-shrink-0"></dt>
+          <dd class="font-medium flex-1"><span class="badge badge-sm badge-accent">自社開発物件</span></dd>
+        </div>` : ''}
       ${row('施工完了', completedLabel)}
       ${row('経過年数', age)}
       ${row('担当者',   property.person_in_charge)}
