@@ -198,7 +198,9 @@ function updatePersonSelect(properties) {
  */
 function calcAgeYears(completedAt) {
   if (!completedAt) return 0;
-  const completed = new Date(completedAt + '-01');
+  // YYYY-MM と YYYY-MM-DD の両形式に対応
+  const s = completedAt.length === 7 ? completedAt + '-01' : completedAt.substring(0, 10);
+  const completed = new Date(s);
   const now = new Date();
   return (now - completed) / (1000 * 60 * 60 * 24 * 365.25);
 }

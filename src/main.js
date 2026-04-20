@@ -140,7 +140,7 @@ function setupAddForm() {
         address:          data.address,
         brand:            data.brand            || null,
         is_developed:     data.is_developed === 'on',
-        completed_at:     data.completed_at     || null,
+        completed_at:     data.completed_at ? data.completed_at + '-01' : null,
         person_in_charge: data.person_in_charge || null,
         notes:            data.notes            || null,
         latitude:         lat,
@@ -187,7 +187,7 @@ function openEditForm(property) {
   form.querySelector('[name="address"]').value          = property.address          || '';
   form.querySelector('[name="brand"]').value            = property.brand            || '';
   form.querySelector('[name="is_developed"]').checked   = property.is_developed     || false;
-  form.querySelector('[name="completed_at"]').value     = property.completed_at     || '';
+  form.querySelector('[name="completed_at"]').value     = property.completed_at?.substring(0, 7) || '';
   form.querySelector('[name="person_in_charge"]').value = property.person_in_charge || '';
   form.querySelector('[name="notes"]').value            = property.notes            || '';
 

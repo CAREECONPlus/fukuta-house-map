@@ -49,10 +49,17 @@ export function getMap() {
  * @param {string|null} completedAt - YYYY-MM 形式の施工完了年月
  * @returns {string} カラーコード
  */
+// YYYY-MM または YYYY-MM-DD → Date オブジェクト
+function _toDate(completedAt) {
+  if (!completedAt) return null;
+  const s = completedAt.length === 7 ? completedAt + '-01' : completedAt.substring(0, 10);
+  return new Date(s);
+}
+
 export function getMarkerColor(completedAt) {
   if (!completedAt) return '#9CA3AF'; // gray（不明）
 
-  const completed = new Date(completedAt + '-01');
+  const completed = _toDate(completedAt);
   const now = new Date();
   const ageYears = (now - completed) / (1000 * 60 * 60 * 24 * 365.25);
 
@@ -69,7 +76,7 @@ export function getMarkerColor(completedAt) {
  */
 export function calcAge(completedAt) {
   if (!completedAt) return '不明';
-  const completed = new Date(completedAt + '-01');
+  const completed = _toDate(completedAt);
   const now = new Date();
   const years = Math.floor((now - completed) / (1000 * 60 * 60 * 24 * 365.25));
   return `${years}年`;

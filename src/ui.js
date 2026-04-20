@@ -139,7 +139,7 @@ function _renderDetailContent(property) {
   const content = document.getElementById('detail-content');
   const age = calcAge(property.completed_at);
   const completedLabel = property.completed_at
-    ? property.completed_at.replace('-', '年') + '月'
+    ? property.completed_at.substring(0, 7).replace('-', '年') + '月'
     : '不明';
   const brandLabel = { fukuta_house: 'フクタハウス', urban_suite: 'アーバンスイート', other: 'その他' }[property.brand] || property.brand || '';
 

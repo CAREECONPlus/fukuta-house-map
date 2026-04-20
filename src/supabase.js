@@ -74,8 +74,8 @@ async function _delete(path, filter) {
 export async function fetchProperties() {
   return _get('properties', {
     select:     '*',
-    is_visible: 'eq.true',
-    order:      'completed_at.desc.nullslast',
+    is_visible: 'is.true',
+    order:      'completed_at.desc',
   });
 }
 
