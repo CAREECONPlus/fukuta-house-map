@@ -8,10 +8,11 @@
 const SUPABASE_URL      = window.__SUPABASE_URL__      || '';
 const SUPABASE_ANON_KEY = window.__SUPABASE_ANON_KEY__ || '';
 
+// 新形式（sb_publishable_...）・旧形式（eyJ...）両対応
 const HEADERS = {
-  apikey:          SUPABASE_ANON_KEY,
-  Authorization:   `Bearer ${SUPABASE_ANON_KEY}`,
-  'Content-Type':  'application/json',
+  apikey:         SUPABASE_ANON_KEY,
+  Authorization:  `Bearer ${SUPABASE_ANON_KEY}`,
+  'Content-Type': 'application/json',
 };
 
 /**
