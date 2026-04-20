@@ -1,0 +1,16 @@
+# 環境変数（絶対にコミットしない）
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# エディタ
+.vscode/
+*.suo
+*.user
+
+# Node（将来的に使う場合）
+node_modules/

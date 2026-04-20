@@ -1,0 +1,89 @@
+/* main.css — カスタムスタイル */
+
+/* ===== ブランドカラー (#795548) ===== */
+:root {
+  --p:  42 0.065 36;   /* primary: #795548 (oklch) */
+  --pf: 36 0.060 36;   /* primary-focus: やや暗め */
+  --pc: 0 0 0;         /* primary-content: 白文字 */
+}
+/* Tailwind の text-primary / bg-primary 等も同色に */
+.text-primary   { color: #795548 !important; }
+.bg-primary     { background-color: #795548 !important; }
+.border-primary { border-color: #795548 !important; }
+.badge-primary  { background-color: #795548 !important; border-color: #795548 !important; color: #fff !important; }
+.btn-primary    { background-color: #795548 !important; border-color: #795548 !important; color: #fff !important; }
+.btn-primary:hover { background-color: #6d4c41 !important; border-color: #6d4c41 !important; }
+
+/* アーバンスイート用バッジ (#00796B: 青緑) */
+.badge-urban-suite {
+  background-color: transparent;
+  border: 1px solid #00796B;
+  color: #00796B;
+}
+
+/* ===== レイアウト ===== */
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 地図は親要素いっぱいに */
+#map {
+  height: 100%;
+  width: 100%;
+}
+
+/* ===== サイドパネル ===== */
+#side-panel {
+  height: calc(100vh - 64px); /* navbarの高さ分引く */
+  overflow: hidden;
+}
+
+/* ===== 詳細パネル ===== */
+#detail-panel {
+  height: calc(100vh - 64px);
+}
+
+/* ===== スクロールバー（細め） ===== */
+#property-list-area::-webkit-scrollbar,
+#detail-content::-webkit-scrollbar {
+  width: 4px;
+}
+#property-list-area::-webkit-scrollbar-track,
+#detail-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+#property-list-area::-webkit-scrollbar-thumb,
+#detail-content::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 2px;
+}
+
+/* ===== Google Maps 情報ウィンドウ上書き ===== */
+.gm-style .gm-style-iw-c {
+  border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
+}
+
+/* ===== スマートフォン対応 ===== */
+@media (max-width: 640px) {
+  #side-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    top: auto;
+    width: 100%;
+    height: 40vh;
+    z-index: 20;
+    border-radius: 16px 16px 0 0;
+  }
+
+  #detail-panel {
+    width: 100%;
+    top: auto;
+    bottom: 0;
+    height: 60vh;
+    border-radius: 16px 16px 0 0;
+  }
+}

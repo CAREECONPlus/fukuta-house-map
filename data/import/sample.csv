@@ -1,0 +1,5 @@
+property_name,address,brand,is_developed,completed_at,person_in_charge,notes
+○○邸,岐阜県関市若草通1-2-3,fukuta_house,false,2022-03,田中,
+△△邸,岐阜県関市本町2-3-4,fukuta_house,false,2018-06,鈴木,外壁修繕済み
+□□アパート,岐阜県関市桜ヶ丘1-1,urban_suite,false,2010-11,佐藤,全6戸
+◇◇分譲地,岐阜県関市安桜町3-2,fukuta_house,true,2014-09,田中,自社開発区画

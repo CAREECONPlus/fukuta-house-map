@@ -1,0 +1,49 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+
+# GitHub Pages へのデプロイに必要な権限
+permissions:
+  contents: read
+  pages:    write
+  id-token: write
+
+# 同時デプロイは1つまで（キューに入れる）
+concurrency:
+  group:              'pages'
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # index.html 内のプレースホルダーを実際の APIキーに置換
+      - name: Inject API keys
+        run: |
+          sed -i \
+            "s|YOUR_GOOGLE_MAPS_API_KEY|${{ secrets.GOOGLE_MAPS_API_KEY }}|g" \
+            index.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # リポジトリルート全体をアップロード（Vite ビルド不要のため）
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
