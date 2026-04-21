@@ -124,10 +124,10 @@ export function renderMarkers(properties, onClickCallback) {
       position: { lat: Number(property.latitude), lng: Number(property.longitude) },
       map,
       title: property.property_name,
-      content: pin.element,
+      content: pin, // pin.element は deprecated
     });
 
-    marker.addListener('click', () => {
+    marker.addListener('gmp-click', () => { // click → gmp-click
       if (onClickCallback) onClickCallback(property);
     });
 
