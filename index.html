@@ -51,12 +51,26 @@
     <!-- サイドパネル（フィルタ + 物件詳細） -->
     <aside id="side-panel" class="w-80 bg-base-100 shadow-lg flex flex-col z-10 transition-transform duration-300">
 
+      <!-- スマホ用 開閉ハンドル -->
+      <div id="panel-toggle" class="sm:hidden flex-shrink-0 flex items-center justify-between px-4 py-3 cursor-pointer select-none border-b border-base-300 active:bg-base-200">
+        <!-- ドラッグバー -->
+        <div class="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-base-300 rounded-full"></div>
+        <div class="flex items-center gap-2 mt-1">
+          <i data-lucide="filter" class="w-4 h-4 text-primary"></i>
+          <span class="font-semibold text-sm">絞り込み・物件一覧</span>
+        </div>
+        <i data-lucide="chevron-up" id="panel-chevron" class="w-5 h-5 text-base-content/50 mt-1 transition-transform duration-300"></i>
+      </div>
+
       <!-- フィルタセクション -->
       <div class="p-4 border-b border-base-300">
-        <div class="flex items-center gap-2 mb-3">
+        <div class="hidden sm:flex items-center gap-2 mb-3">
           <i data-lucide="filter" class="w-4 h-4 text-primary"></i>
           <span class="font-semibold text-sm">絞り込み</span>
           <button id="btn-reset-filter" class="btn btn-xs btn-ghost ml-auto">リセット</button>
+        </div>
+        <div class="flex sm:hidden items-center justify-end mb-3">
+          <button id="btn-reset-filter-mobile" class="btn btn-xs btn-ghost">リセット</button>
         </div>
 
         <!-- キーワード検索 -->

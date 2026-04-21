@@ -31,8 +31,8 @@ export function setupUI(onFilterChange = () => {}, onEdit = () => {}, onDelete =
   document.getElementById('filter-search')?.addEventListener('input', onFilterChange);
   document.getElementById('filter-developed')?.addEventListener('change', onFilterChange);
 
-  // フィルタリセット
-  document.getElementById('btn-reset-filter')?.addEventListener('click', () => {
+  // フィルタリセット（PC・モバイル共通）
+  const _resetFilter = () => {
     document.getElementById('filter-search').value      = '';
     document.getElementById('filter-brand').value       = '';
     document.getElementById('filter-age-min').value     = '';
@@ -40,6 +40,14 @@ export function setupUI(onFilterChange = () => {}, onEdit = () => {}, onDelete =
     document.getElementById('filter-person').value      = '';
     document.getElementById('filter-developed').checked = false;
     onFilterChange();
+  };
+  document.getElementById('btn-reset-filter')?.addEventListener('click', _resetFilter);
+  document.getElementById('btn-reset-filter-mobile')?.addEventListener('click', _resetFilter);
+
+  // スマホ用パネル開閉トグル
+  document.getElementById('panel-toggle')?.addEventListener('click', () => {
+    const panel = document.getElementById('side-panel');
+    panel.classList.toggle('panel-collapsed');
   });
 
   // 詳細パネルを閉じる

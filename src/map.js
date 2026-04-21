@@ -18,6 +18,7 @@ export function initMap() {
     center: SEKI_CENTER,
     zoom: DEFAULT_ZOOM,
     mapTypeId: google.maps.MapTypeId.ROADMAP,
+    gestureHandling: 'greedy', // スマホで1本指パン可能にする
     mapTypeControl: true,
     mapTypeControlOptions: {
       style: google.maps.MapTypeControlStyle.DROPDOWN_MENU,
