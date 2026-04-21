@@ -146,7 +146,7 @@ export function hideDetailPanel() {
 }
 
 // ===== フクタハウス本社住所（実際の住所に更新してください） =====
-const FUKUTA_HOUSE_ADDRESS = '岐阜県関市栄町5-17-1';
+const FUKUTA_HOUSE_ADDRESS = '35.485869,136.897825'; // フクタハウス本社
 
 // ===== 内部関数 =====
 
