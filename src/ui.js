@@ -132,8 +132,18 @@ export function showDetailPanel(property) {
     btnNav.disabled = true;
   }
 
+  // 展開状態にリセット（前回折りたたまれていても開いた状態で表示）
+  document.getElementById('detail-panel').classList.remove('detail-collapsed');
   document.getElementById('detail-panel').classList.remove('translate-x-full');
   if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  // スマホ用ヘッダータップで開閉
+  const header = document.getElementById('detail-header');
+  header.onclick = (e) => {
+    // ✕ボタンはパネルを閉じるので開閉トグルは発火させない
+    if (e.target.closest('#btn-close-detail')) return;
+    document.getElementById('detail-panel').classList.toggle('detail-collapsed');
+  };
 }
 
 /**

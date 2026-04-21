@@ -200,9 +200,15 @@
 
     <!-- 物件詳細パネル（右スライドイン） -->
     <div id="detail-panel" class="fixed right-0 top-[64px] bottom-0 w-80 bg-base-100 shadow-2xl z-20 flex flex-col translate-x-full transition-transform duration-300">
-      <div class="flex items-center justify-between p-4 border-b border-base-300">
-        <h2 class="font-bold text-base" id="detail-title">物件詳細</h2>
-        <button id="btn-close-detail" class="btn btn-sm btn-ghost btn-circle">
+      <div id="detail-header" class="relative flex items-center justify-between p-4 border-b border-base-300 flex-shrink-0">
+        <!-- スマホ用ドラッグバー -->
+        <div class="sm:hidden absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 bg-base-300 rounded-full"></div>
+        <div class="flex items-center gap-2 mt-1 flex-1 min-w-0">
+          <!-- スマホ用 開閉シェブロン -->
+          <i data-lucide="chevron-up" id="detail-chevron" class="sm:hidden w-4 h-4 text-base-content/50 flex-shrink-0 transition-transform duration-300"></i>
+          <h2 class="font-bold text-base truncate" id="detail-title">物件詳細</h2>
+        </div>
+        <button id="btn-close-detail" class="btn btn-sm btn-ghost btn-circle flex-shrink-0">
           <i data-lucide="x" class="w-4 h-4"></i>
         </button>
       </div>

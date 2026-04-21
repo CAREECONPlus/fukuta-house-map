@@ -106,5 +106,16 @@ html, body {
     bottom: 0;
     height: 60vh;
     border-radius: 16px 16px 0 0;
+    overflow: hidden;
+    transition: transform 0.3s ease, height 0.3s ease;
+  }
+
+  /* 折りたたみ状態 */
+  #detail-panel.detail-collapsed {
+    height: 52px;
+  }
+
+  #detail-panel.detail-collapsed #detail-chevron {
+    transform: rotate(180deg);
   }
 }
