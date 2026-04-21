@@ -36,7 +36,16 @@ html, body {
 /* ===== サイドパネル ===== */
 #side-panel {
   height: calc(100vh - 64px); /* navbarの高さ分引く */
-  overflow: hidden;
+  overflow: hidden;            /* 折りたたみアニメーション用 */
+  display: flex;
+  flex-direction: column;
+}
+
+/* パネル本体：スクロール対象 */
+#panel-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0; /* flex子要素がスクロール可能になる必須指定 */
 }
 
 /* ===== 詳細パネル ===== */
