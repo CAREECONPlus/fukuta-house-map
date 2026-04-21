@@ -79,6 +79,13 @@ export async function fetchProperties() {
   });
 }
 
+/**
+ * 重複チェック用に物件名と住所だけ全件取得する（is_visible 問わず）
+ */
+export async function fetchPropertyKeys() {
+  return _get('properties', { select: 'property_name,address' });
+}
+
 export async function insertProperty(data) {
   const rows = await _post('properties', data);
   return Array.isArray(rows) ? rows[0] : rows;

@@ -1,7 +1,7 @@
 /**
  * import.js — CSVインポート処理（列マッピング・ジオコーディング対応）
  */
-import { insertProperty } from './supabase.js';
+import { insertProperty, fetchPropertyKeys, isSupabaseConfigured } from './supabase.js';
 
 /**
  * システム項目の定義
@@ -112,11 +112,32 @@ export async function importProperties(data, onProgress) {
   let failed  = 0;
   let skipped = 0;
 
+  // 既存物件の「物件名||住所」をSetで保持して重複チェックに使う
+  const existingKeys = new Set();
+  if (isSupabaseConfigured()) {
+    try {
+      const existing = await fetchPropertyKeys();
+      existing.forEach((p) => {
+        existingKeys.add(`${(p.property_name || '').trim()}||${(p.address || '').trim()}`);
+      });
+    } catch (err) {
+      console.warn('既存物件の取得に失敗しました（重複チェックをスキップ）:', err);
+    }
+  }
+
   const geocoder = typeof google !== 'undefined' ? new google.maps.Geocoder() : null;
 
   for (let i = 0; i < data.length; i++) {
     const item = data[i];
     onProgress?.({ current: i + 1, total: data.length, status: `「${item.property_name}」を処理中...` });
+
+    // 重複チェック：物件名＋住所が一致するものはスキップ
+    const key = `${item.property_name.trim()}||${item.address.trim()}`;
+    if (existingKeys.has(key)) {
+      skipped++;
+      await _sleep(30);
+      continue;
+    }
 
     let lat = null, lng = null;
     if (geocoder && item.address) {
@@ -124,12 +145,13 @@ export async function importProperties(data, onProgress) {
         const r = await _geocode(geocoder, item.address);
         lat = r.lat; lng = r.lng;
       } catch {
-        skipped++;
+        // ジオコーディング失敗は座標なしで続行
       }
     }
 
     try {
       await insertProperty({ ...item, latitude: lat, longitude: lng });
+      existingKeys.add(key); // 登録済みとして追加（同一CSV内での重複も防ぐ）
       success++;
     } catch (err) {
       console.error(`インポートエラー (${i + 1}件目 "${item.property_name}"):`, err);
