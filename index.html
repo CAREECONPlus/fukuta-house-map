@@ -219,10 +219,29 @@
         </button>
         <!-- 経路情報パネル（ルート計算後に表示） -->
         <div id="route-info" class="hidden rounded-lg p-3 text-xs space-y-2" style="background:#f5f0ee">
-          <div id="route-loading" class="flex items-center gap-2 text-base-content/60">
+
+          <!-- Step1: 出発地選択 -->
+          <div id="route-departure">
+            <p class="text-base-content/60 mb-2 font-medium flex items-center gap-1">
+              <i data-lucide="navigation" class="w-3 h-3"></i>出発地を選択
+            </p>
+            <div class="grid grid-cols-2 gap-1.5">
+              <button id="btn-from-office" class="btn btn-xs btn-outline gap-1">
+                <i data-lucide="building-2" class="w-3 h-3"></i>フクタハウス
+              </button>
+              <button id="btn-from-current" class="btn btn-xs btn-outline gap-1">
+                <i data-lucide="locate" class="w-3 h-3"></i>現在地
+              </button>
+            </div>
+          </div>
+
+          <!-- Step2: 計算中 -->
+          <div id="route-loading" class="hidden flex items-center gap-2 text-base-content/60">
             <span class="loading loading-spinner loading-xs"></span>
             ルートを計算中...
           </div>
+
+          <!-- Step3: 結果 -->
           <div id="route-result" class="hidden">
             <div class="flex items-center justify-between mb-2">
               <div class="flex items-center gap-3">
@@ -241,6 +260,7 @@
               <i data-lucide="external-link" class="w-3 h-3"></i>Googleマップで開く
             </button>
           </div>
+
           <div id="route-error" class="hidden text-error"></div>
         </div>
         <div class="grid grid-cols-3 gap-1">

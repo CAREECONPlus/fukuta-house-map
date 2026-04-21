@@ -10,14 +10,29 @@ import { getMap } from './map.js?v=7';
 let _directionsRenderer = null;
 
 /**
- * 現在地から物件までのルートを地図に描画する
- * @param {Object} property  - { address, latitude, longitude, property_name }
- * @param {Function} onResult - ({ distance, duration }) => void
- * @param {Function} onError  - (message) => void
+ * 指定した出発地から物件までのルートを地図に描画する
+ * @param {Object}          property       - { address, latitude, longitude }
+ * @param {Function}        onResult       - ({ distance, duration }) => void
+ * @param {Function}        onError        - (message) => void
+ * @param {string|Object|null} originOverride
+ *   - null              : 現在地（geolocation）を使う
+ *   - string            : 住所文字列（例：フクタハウス本社住所）
+ *   - {lat, lng} object : 座標
  */
-export function showRoute(property, onResult, onError) {
+export function showRoute(property, onResult, onError, originOverride = null) {
   const map = getMap();
   if (!map) { onError?.('地図が初期化されていません'); return; }
+
+  // 目的地：座標があれば座標を、なければ住所を使う
+  const destination = (property.latitude && property.longitude)
+    ? { lat: Number(property.latitude), lng: Number(property.longitude) }
+    : property.address;
+
+  // 出発地が指定されている場合はそのまま使用
+  if (originOverride !== null) {
+    _calcAndRender(map, originOverride, destination, onResult, onError);
+    return;
+  }
 
   // 現在地を取得
   if (!navigator.geolocation) {
@@ -27,21 +42,11 @@ export function showRoute(property, onResult, onError) {
 
   navigator.geolocation.getCurrentPosition(
     (pos) => {
-      const origin = {
-        lat: pos.coords.latitude,
-        lng: pos.coords.longitude,
-      };
-
-      // 目的地：座標があれば座標を、なければ住所を使う
-      const destination = (property.latitude && property.longitude)
-        ? { lat: property.latitude, lng: property.longitude }
-        : property.address;
-
+      const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
       _calcAndRender(map, origin, destination, onResult, onError);
     },
     (err) => {
-      // 現在地取得失敗 → 住所から検索（岐阜県関市を起点に）
-      onError?.(`現在地を取得できませんでした（${err.message}）\n住所を入力するか、ブラウザの位置情報を許可してください`);
+      onError?.(`現在地を取得できませんでした（${err.message}）\nブラウザの位置情報を許可してください`);
     },
     { enableHighAccuracy: true, timeout: 8000 }
   );
@@ -100,13 +105,15 @@ function _calcAndRender(map, origin, destination, onResult, onError) {
 
 /**
  * Google マップアプリでナビを開く（フォールバック用）
- * @param {string} address
+ * @param {string}      destination  - 目的地の住所
+ * @param {string|null} origin       - 出発地の住所（null なら Google マップが現在地を使う）
  */
-export function openGoogleMapsNav(address) {
-  if (!address) return;
-  const q = encodeURIComponent(address);
+export function openGoogleMapsNav(destination, origin = null) {
+  if (!destination) return;
+  const d = encodeURIComponent(destination);
+  const o = origin ? `&origin=${encodeURIComponent(origin)}` : '';
   window.open(
-    `https://www.google.com/maps/dir/?api=1&destination=${q}&travelmode=driving`,
+    `https://www.google.com/maps/dir/?api=1${o}&destination=${d}&travelmode=driving`,
     '_blank',
     'noopener,noreferrer'
   );

@@ -152,35 +152,60 @@ export function hideDetailPanel() {
   _currentProperty = null;
 }
 
+// ===== フクタハウス本社住所（実際の住所に更新してください） =====
+const FUKUTA_HOUSE_ADDRESS = '岐阜県関市';  // ← 正確な住所に更新
+
 // ===== 内部関数 =====
 
 function _startNavigation(property) {
-  const routeInfo    = document.getElementById('route-info');
-  const routeLoading = document.getElementById('route-loading');
-  const routeResult  = document.getElementById('route-result');
-  const routeError   = document.getElementById('route-error');
+  const routeInfo      = document.getElementById('route-info');
+  const routeDeparture = document.getElementById('route-departure');
+  const routeLoading   = document.getElementById('route-loading');
+  const routeResult    = document.getElementById('route-result');
+  const routeError     = document.getElementById('route-error');
 
+  // まず出発地選択画面を表示
   routeInfo.classList.remove('hidden');
-  routeLoading.classList.remove('hidden');
+  routeDeparture.classList.remove('hidden');
+  routeLoading.classList.add('hidden');
   routeResult.classList.add('hidden');
   routeError.classList.add('hidden');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 
-  showRoute(
-    property,
-    ({ distance, duration }) => {
-      routeLoading.classList.add('hidden');
-      document.getElementById('route-distance').textContent = distance;
-      document.getElementById('route-duration').textContent = duration;
-      document.getElementById('btn-open-maps').onclick = () => openGoogleMapsNav(property.address);
-      routeResult.classList.remove('hidden');
-      if (typeof lucide !== 'undefined') lucide.createIcons();
-    },
-    (errMsg) => {
-      routeLoading.classList.add('hidden');
-      routeError.textContent = errMsg;
-      routeError.classList.remove('hidden');
-    }
-  );
+  // 出発地が決まったらルート計算を開始する共通処理
+  const _calcRoute = (originOverride) => {
+    routeDeparture.classList.add('hidden');
+    routeLoading.classList.remove('hidden');
+    routeResult.classList.add('hidden');
+    routeError.classList.add('hidden');
+
+    // 「Googleマップで開く」の出発地（住所文字列 or null）
+    const originAddress = originOverride === null ? null : FUKUTA_HOUSE_ADDRESS;
+
+    showRoute(
+      property,
+      ({ distance, duration }) => {
+        routeLoading.classList.add('hidden');
+        document.getElementById('route-distance').textContent = distance;
+        document.getElementById('route-duration').textContent = duration;
+        document.getElementById('btn-open-maps').onclick =
+          () => openGoogleMapsNav(property.address, originAddress);
+        routeResult.classList.remove('hidden');
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      },
+      (errMsg) => {
+        routeLoading.classList.add('hidden');
+        routeError.textContent = errMsg;
+        routeError.classList.remove('hidden');
+      },
+      originOverride  // null → 現在地, 文字列 → フクタハウス住所
+    );
+  };
+
+  // フクタハウスから
+  document.getElementById('btn-from-office').onclick  = () => _calcRoute(FUKUTA_HOUSE_ADDRESS);
+  // 現在地から
+  document.getElementById('btn-from-current').onclick = () => _calcRoute(null);
 }
 
 
