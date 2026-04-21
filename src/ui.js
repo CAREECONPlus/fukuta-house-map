@@ -137,12 +137,20 @@ export function showDetailPanel(property) {
   document.getElementById('detail-panel').classList.remove('translate-x-full');
   if (typeof lucide !== 'undefined') lucide.createIcons();
 
-  // スマホ用ヘッダータップで開閉
+  // スマホ用ヘッダータップで開閉（一覧パネルと連動）
   const header = document.getElementById('detail-header');
   header.onclick = (e) => {
     // ✕ボタンはパネルを閉じるので開閉トグルは発火させない
     if (e.target.closest('#btn-close-detail')) return;
-    document.getElementById('detail-panel').classList.toggle('detail-collapsed');
+    const detailPanel = document.getElementById('detail-panel');
+    const sidePanel   = document.getElementById('side-panel');
+    detailPanel.classList.toggle('detail-collapsed');
+    // 一覧パネルも同期して折りたたむ／展開する
+    if (detailPanel.classList.contains('detail-collapsed')) {
+      sidePanel.classList.add('panel-collapsed');
+    } else {
+      sidePanel.classList.remove('panel-collapsed');
+    }
   };
 }
 
@@ -152,6 +160,8 @@ export function showDetailPanel(property) {
 export function hideDetailPanel() {
   document.getElementById('detail-panel').classList.add('translate-x-full');
   document.getElementById('route-info')?.classList.add('hidden');
+  // ✕で閉じたときは一覧パネルを展開した状態に戻す
+  document.getElementById('side-panel').classList.remove('panel-collapsed');
   _currentProperty = null;
 }
 
