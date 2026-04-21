@@ -1,0 +1,2 @@
+/* daisyUI が base / components を担当するため utilities のみビルド */
+@tailwind utilities;

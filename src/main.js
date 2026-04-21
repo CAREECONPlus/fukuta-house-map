@@ -73,7 +73,7 @@ const DEMO_PROPERTIES = [
 // ===== 初期化 =====
 (async () => {
   await window.__mapsReady;
-  initMap();
+  await initMap();
 
   setupUI(applyFilterAndRender, openEditForm, handleDelete, addMaintenance);
 

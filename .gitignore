@@ -12,5 +12,9 @@ Thumbs.db
 *.suo
 *.user
 
-# Node（将来的に使う場合）
+# Node
 node_modules/
+package-lock.json
+
+# Tailwind ビルド成果物（GitHub Actions / npm run build:css で生成）
+styles/tailwind.css

@@ -10,14 +10,28 @@ let map = null;
 let markers = [];
 let infoWindow = null;
 
+// AdvancedMarkerElement / PinElement（initMap で非同期ロード）
+let _AdvancedMarkerElement = null;
+let _PinElement = null;
+
 /**
  * Google Maps を初期化する
  */
-export function initMap() {
+export async function initMap() {
+  // マーカーライブラリを事前ロード（deprecated Marker を使わないため）
+  const { AdvancedMarkerElement, PinElement } = await google.maps.importLibrary('marker');
+  _AdvancedMarkerElement = AdvancedMarkerElement;
+  _PinElement = PinElement;
+
+  // Map ID が設定されている場合のみ渡す（AdvancedMarkerElement はベクターマップを推奨）
+  const mapId = window.__MAPS_MAP_ID__ && window.__MAPS_MAP_ID__ !== 'YOUR_GOOGLE_MAPS_MAP_ID'
+    ? window.__MAPS_MAP_ID__
+    : undefined;
+
   map = new google.maps.Map(document.getElementById('map'), {
     center: SEKI_CENTER,
     zoom: DEFAULT_ZOOM,
-    mapTypeId: google.maps.MapTypeId.ROADMAP,
+    mapId,
     gestureHandling: 'greedy', // スマホで1本指パン可能にする
     mapTypeControl: true,
     mapTypeControlOptions: {
@@ -89,8 +103,8 @@ export function calcAge(completedAt) {
  * @param {Function} onClickCallback - マーカークリック時のコールバック(property)
  */
 export function renderMarkers(properties, onClickCallback) {
-  // 既存マーカーをクリア
   clearMarkers();
+  if (!_AdvancedMarkerElement || !_PinElement) return;
 
   properties.forEach((property) => {
     if (!property.latitude || !property.longitude) return;
@@ -98,22 +112,19 @@ export function renderMarkers(properties, onClickCallback) {
 
     const color = getMarkerColor(property.completed_at);
 
-    // カスタムSVGマーカー
-    const svgMarker = {
-      path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z',
-      fillColor: color,
-      fillOpacity: 1,
-      strokeColor: '#ffffff',
-      strokeWeight: 1.5,
-      scale: 1.6,
-      anchor: new google.maps.Point(12, 22),
-    };
+    // PinElement でカラーピンを作成
+    const pin = new _PinElement({
+      background:  color,
+      borderColor: '#ffffff',
+      glyphColor:  '#ffffff',
+      scale: 1.2,
+    });
 
-    const marker = new google.maps.Marker({
-      position: { lat: property.latitude, lng: property.longitude },
+    const marker = new _AdvancedMarkerElement({
+      position: { lat: Number(property.latitude), lng: Number(property.longitude) },
       map,
       title: property.property_name,
-      icon: svgMarker,
+      content: pin.element,
     });
 
     marker.addListener('click', () => {
@@ -128,7 +139,7 @@ export function renderMarkers(properties, onClickCallback) {
  * 全マーカーを地図から削除する
  */
 export function clearMarkers() {
-  markers.forEach((m) => m.setMap(null));
+  markers.forEach((m) => { m.map = null; });
   markers = [];
 }
 

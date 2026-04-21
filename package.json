@@ -1,0 +1,11 @@
+{
+  "name": "fukuta-house-map",
+  "private": true,
+  "devDependencies": {
+    "tailwindcss": "^3.4.3"
+  },
+  "scripts": {
+    "build:css": "tailwindcss -i styles/input.css -o styles/tailwind.css --minify",
+    "watch:css": "tailwindcss -i styles/input.css -o styles/tailwind.css --watch"
+  }
+}

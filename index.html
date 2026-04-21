@@ -9,17 +9,10 @@
   <link rel="icon" type="image/png" href="favicon.png" />
   <link rel="apple-touch-icon" href="favicon.png" />
 
-  <!-- Tailwind CSS (CDN) -->
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.3/base.css" rel="stylesheet" />
-  <!-- daisyUI -->
+  <!-- daisyUI（base + components を担当） -->
   <link href="https://cdn.jsdelivr.net/npm/daisyui@4.10.2/dist/full.min.css" rel="stylesheet" />
-  <!-- Tailwind play CDN (開発用) -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      plugins: [],
-    }
-  </script>
+  <!-- Tailwind utilities（npm run build:css で生成） -->
+  <link rel="stylesheet" href="styles/tailwind.css" />
 
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
@@ -444,6 +437,7 @@
        =================================================== -->
   <script>
     window.__MAPS_API_KEY__     = 'YOUR_GOOGLE_MAPS_API_KEY';
+    window.__MAPS_MAP_ID__      = 'YOUR_GOOGLE_MAPS_MAP_ID';
     window.__SUPABASE_URL__     = 'YOUR_SUPABASE_URL';
     window.__SUPABASE_ANON_KEY__ = 'YOUR_SUPABASE_ANON_KEY';
 
