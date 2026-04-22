@@ -10,6 +10,16 @@ let allProperties = [];
 const _changeLog = [];
 
 /**
+ * 全角英数字を半角に変換し、小文字化する（検索用正規化）
+ * 例: "ＢＲＡＮＵ" → "branu", "Ａ" → "a", "１" → "1"
+ */
+function _normalize(str) {
+  return (str || '')
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+    .toLowerCase();
+}
+
+/**
  * 変更履歴を取得する（新しい順）
  * @param {string} [propertyId] - 指定すると該当物件の履歴のみ返す
  */
@@ -76,7 +86,7 @@ export function deleteProperty(property) {
  * フィルタを適用して再描画する
  */
 export function applyFilterAndRender() {
-  const searchVal    = (document.getElementById('filter-search')?.value    || '').trim().toLowerCase();
+  const searchVal    = _normalize((document.getElementById('filter-search')?.value || '').trim());
   const brandVal     = document.getElementById('filter-brand')?.value      || '';
   const ageMinVal    = document.getElementById('filter-age-min')?.value    || '';
   const ageMaxVal    = document.getElementById('filter-age-max')?.value    || '';
@@ -85,8 +95,8 @@ export function applyFilterAndRender() {
 
   const filtered = allProperties.filter((p) => {
     if (searchVal) {
-      const name    = (p.property_name || '').toLowerCase();
-      const address = (p.address || '').toLowerCase();
+      const name    = _normalize(p.property_name);
+      const address = _normalize(p.address);
       if (!name.includes(searchVal) && !address.includes(searchVal)) return false;
     }
     if (brandVal     && p.brand            !== brandVal)    return false;
