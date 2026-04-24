@@ -38,8 +38,15 @@ export function analyzeCsv(csvText) {
   const lines = csvText.trim().split(/\r?\n/);
   if (lines.length < 2) return { headers: [], autoMapping: {}, rowCount: 0, error: 'データが1件もありません' };
 
-  const headers  = splitCsvLine(lines[0]).map((h) => h.trim());
-  const rowCount = lines.slice(1).filter((l) => l.trim()).length;
+  // 先頭の空行（全列が空）をスキップしてヘッダー行を探す
+  let headerIdx = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const cols = splitCsvLine(lines[i]).map((h) => h.trim());
+    if (cols.some((c) => c !== '')) { headerIdx = i; break; }
+  }
+
+  const headers  = splitCsvLine(lines[headerIdx]).map((h) => h.trim()).filter((h) => h !== '');
+  const rowCount = lines.slice(headerIdx + 1).filter((l) => l.trim()).length;
 
   // 自動マッピング: ヘッダー名をキーワード辞書と照合
   const autoMapping = {};
@@ -61,12 +68,19 @@ export function analyzeCsv(csvText) {
  */
 export function parseCsvWithMapping(csvText, mapping) {
   const lines  = csvText.trim().split(/\r?\n/);
-  const headers = splitCsvLine(lines[0]).map((h) => h.trim());
+
+  // 先頭の空行をスキップしてヘッダー行を探す
+  let headerIdx = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const cols = splitCsvLine(lines[i]).map((h) => h.trim());
+    if (cols.some((c) => c !== '')) { headerIdx = i; break; }
+  }
+  const headers = splitCsvLine(lines[headerIdx]).map((h) => h.trim());
 
   const data   = [];
   const errors = [];
 
-  for (let i = 1; i < lines.length; i++) {
+  for (let i = headerIdx + 1; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
 

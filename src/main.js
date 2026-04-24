@@ -252,7 +252,13 @@ function setupImportForm() {
     resultEl.classList.add('hidden');
     btnImport.disabled = true;
 
-    _csvText = await file.text();
+    // UTF-8 で読み込み失敗したら Shift-JIS にフォールバック（日本語CSVの文字化け対策）
+    const _buf = await file.arrayBuffer();
+    try {
+      _csvText = new TextDecoder('utf-8', { fatal: true }).decode(_buf);
+    } catch {
+      _csvText = new TextDecoder('shift-jis').decode(_buf);
+    }
     const { headers, autoMapping, rowCount, error } = analyzeCsv(_csvText);
 
     if (error) {
