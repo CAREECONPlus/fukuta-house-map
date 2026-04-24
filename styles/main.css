@@ -68,6 +68,19 @@ html, body {
   border-radius: 2px;
 }
 
+/* ===== リストビュー ===== */
+#list-view {
+  /* テーブルヘッダーを sticky にするために overflow-y: auto が必要 */
+  overflow-y: auto;
+}
+
+@media (max-width: 640px) {
+  /* スマホ：下部パネルの裏に隠れないよう余白を確保 */
+  #list-view {
+    padding-bottom: 60vh;
+  }
+}
+
 /* ===== Google Maps 情報ウィンドウ上書き ===== */
 .gm-style .gm-style-iw-c {
   border-radius: 8px !important;

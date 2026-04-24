@@ -2,7 +2,7 @@
  * main.js — アプリ初期化
  */
 import { initMap } from './map.js?v=7';
-import { renderPropertyList, applyFilterAndRender, addProperty, updateProperty, deleteProperty } from './properties.js?v=7';
+import { renderPropertyList, applyFilterAndRender, addProperty, updateProperty, deleteProperty, setViewMode, exportFilteredCsv } from './properties.js?v=8';
 import { setupUI } from './ui.js?v=7';
 import { addMaintenance } from './maintenance.js';
 import {
@@ -76,6 +76,13 @@ const DEMO_PROPERTIES = [
   await initMap();
 
   setupUI(applyFilterAndRender, openEditForm, handleDelete, addMaintenance);
+
+  // ビュー切替トグル
+  document.getElementById('btn-view-map')?.addEventListener('click', () => setViewMode('map'));
+  document.getElementById('btn-view-list')?.addEventListener('click', () => setViewMode('list'));
+
+  // エクスポート
+  document.getElementById('btn-export')?.addEventListener('click', exportFilteredCsv);
 
   // Supabase が設定済みなら DB から、未設定ならデモデータを表示
   if (isSupabaseConfigured()) {
