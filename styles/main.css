@@ -5,6 +5,9 @@
   --p:  42 0.065 36;   /* primary: #795548 (oklch) */
   --pf: 36 0.060 36;   /* primary-focus: やや暗め */
   --pc: 0 0 0;         /* primary-content: 白文字 */
+
+  /* iOS Safe Area を含むナビバー高さ（ステータスバー分を上乗せ） */
+  --navbar-h: calc(64px + env(safe-area-inset-top));
 }
 /* Tailwind の text-primary / bg-primary 等も同色に */
 .text-primary   { color: #795548 !important; }
@@ -21,6 +24,13 @@
   color: #00796B;
 }
 
+/* ===== iOS Safe Area 対応 ===== */
+/* viewport-fit=cover で画面端まで広げた上で、ステータスバー分だけ内側にずらす */
+header.navbar {
+  padding-top: env(safe-area-inset-top);
+  /* ナビバーの実質高さが増えるため height: auto のまま */
+}
+
 /* ===== レイアウト ===== */
 html, body {
   height: 100%;
@@ -35,8 +45,8 @@ html, body {
 
 /* ===== サイドパネル ===== */
 #side-panel {
-  height: calc(100vh - 64px); /* navbarの高さ分引く */
-  overflow: hidden;            /* 折りたたみアニメーション用 */
+  height: calc(100vh - var(--navbar-h)); /* Safe Area込みのナビバー高さ分引く */
+  overflow: hidden;                       /* 折りたたみアニメーション用 */
   display: flex;
   flex-direction: column;
 }
@@ -50,7 +60,8 @@ html, body {
 
 /* ===== 詳細パネル ===== */
 #detail-panel {
-  height: calc(100vh - 64px);
+  top: var(--navbar-h); /* Safe Area込みのナビバー直下から開始 */
+  height: calc(100vh - var(--navbar-h));
 }
 
 /* ===== スクロールバー（細め） ===== */
