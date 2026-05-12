@@ -180,6 +180,13 @@ export function renderPropertyList(properties) {
 }
 
 /**
+ * 現在保持している全物件を返す（重複チェック用）
+ */
+export function getAllProperties() {
+  return allProperties;
+}
+
+/**
  * 物件を1件追加してリストを再描画する
  */
 export function addProperty(property) {

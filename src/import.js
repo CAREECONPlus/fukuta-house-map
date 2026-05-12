@@ -2,6 +2,7 @@
  * import.js — CSVインポート処理（列マッピング・ジオコーディング対応）
  */
 import { insertProperty, fetchPropertyKeys, isSupabaseConfigured } from './supabase.js';
+import { propertyDupKey, addressDupKey } from './utils.js';
 
 /**
  * システム項目の定義
@@ -119,20 +120,29 @@ export function parseCsvWithMapping(csvText, mapping) {
  * パース済みデータをジオコーディングしながら Supabase に一括インポートする
  * @param {Array}    data
  * @param {Function} onProgress - ({ current, total, status }) => void
- * @returns {Promise<{ success: number, failed: number, skipped: number }>}
+ * @returns {Promise<{ success: number, failed: number, skipped: number, addressDuplicates: Array }>}
+ *   addressDuplicates: [{ row, property_name, address, existing_name }]
  */
 export async function importProperties(data, onProgress) {
   let success = 0;
   let failed  = 0;
   let skipped = 0;
+  const addressDuplicates = [];
 
-  // 既存物件の「物件名||住所」をSetで保持して重複チェックに使う
-  const existingKeys = new Set();
+  // 既存物件の正規化キーを保持。
+  //  - existingFullKeys: 物件名+住所 の完全一致判定用
+  //  - existingAddrIndex: 住所のみ一致判定用（住所キー → 物件名 のMap）
+  const existingFullKeys = new Set();
+  const existingAddrIndex = new Map();
   if (isSupabaseConfigured()) {
     try {
       const existing = await fetchPropertyKeys();
       existing.forEach((p) => {
-        existingKeys.add(`${(p.property_name || '').trim()}||${(p.address || '').trim()}`);
+        existingFullKeys.add(propertyDupKey(p));
+        const addrKey = addressDupKey(p.address);
+        if (addrKey && !existingAddrIndex.has(addrKey)) {
+          existingAddrIndex.set(addrKey, p.property_name || '');
+        }
       });
     } catch (err) {
       console.warn('既存物件の取得に失敗しました（重複チェックをスキップ）:', err);
@@ -145,12 +155,23 @@ export async function importProperties(data, onProgress) {
     const item = data[i];
     onProgress?.({ current: i + 1, total: data.length, status: `「${item.property_name}」を処理中...` });
 
-    // 重複チェック：物件名＋住所が一致するものはスキップ
-    const key = `${item.property_name.trim()}||${item.address.trim()}`;
-    if (existingKeys.has(key)) {
+    // 完全一致（物件名+住所）はスキップ
+    const fullKey = propertyDupKey(item);
+    if (existingFullKeys.has(fullKey)) {
       skipped++;
       await _sleep(30);
       continue;
+    }
+
+    // 住所のみ一致は登録するがログに記録（行番号はヘッダー後の通し番号）
+    const addrKey = addressDupKey(item.address);
+    if (addrKey && existingAddrIndex.has(addrKey)) {
+      addressDuplicates.push({
+        row:           i + 1,
+        property_name: item.property_name,
+        address:       item.address,
+        existing_name: existingAddrIndex.get(addrKey),
+      });
     }
 
     let lat = null, lng = null;
@@ -165,7 +186,11 @@ export async function importProperties(data, onProgress) {
 
     try {
       await insertProperty({ ...item, latitude: lat, longitude: lng });
-      existingKeys.add(key); // 登録済みとして追加（同一CSV内での重複も防ぐ）
+      // 登録済みとして追加（同一CSV内での重複検出にも使う）
+      existingFullKeys.add(fullKey);
+      if (addrKey && !existingAddrIndex.has(addrKey)) {
+        existingAddrIndex.set(addrKey, item.property_name);
+      }
       success++;
     } catch (err) {
       console.error(`インポートエラー (${i + 1}件目 "${item.property_name}"):`, err);
@@ -176,7 +201,7 @@ export async function importProperties(data, onProgress) {
     await _sleep(120);
   }
 
-  return { success, failed, skipped };
+  return { success, failed, skipped, addressDuplicates };
 }
 
 // ===== 値の正規化 =====

@@ -2,7 +2,7 @@
  * main.js — アプリ初期化
  */
 import { initMap } from './map.js?v=7';
-import { renderPropertyList, applyFilterAndRender, addProperty, updateProperty, deleteProperty, setViewMode, exportFilteredCsv } from './properties.js?v=8';
+import { renderPropertyList, applyFilterAndRender, addProperty, updateProperty, deleteProperty, setViewMode, exportFilteredCsv, getAllProperties } from './properties.js?v=8';
 import { setupUI } from './ui.js?v=7';
 import { addMaintenance } from './maintenance.js';
 import {
@@ -13,6 +13,7 @@ import {
   deletePropertyDb,
 } from './supabase.js';
 import { FIELD_DEFS, analyzeCsv, parseCsvWithMapping, importProperties } from './import.js';
+import { propertyDupKey, addressDupKey } from './utils.js';
 
 // ===== デモ用サンプルデータ（Supabase 未接続時のみ使用）=====
 const DEMO_PROPERTIES = [
@@ -138,6 +139,15 @@ function setupAddForm() {
     const data      = Object.fromEntries(new FormData(form));
     const isEditing = Boolean(data.property_id);
     const submitBtn = form.querySelector('[type="submit"]');
+
+    // 新規追加時のみ重複チェック（編集時は自分自身に当たるためスキップ）
+    if (!isEditing) {
+      const dup = findDuplicate({ property_name: data.property_name, address: data.address });
+      if (dup && !confirmDuplicate(dup, data)) {
+        return; // ユーザーがキャンセル
+      }
+    }
+
     submitBtn.disabled    = true;
     submitBtn.textContent = isEditing ? '更新中...' : '追加中...';
 
@@ -336,7 +346,7 @@ function setupImportForm() {
     progressEl.classList.remove('hidden');
     resultEl.classList.add('hidden');
 
-    const { success, failed, skipped } = await importProperties(
+    const { success, failed, skipped, addressDuplicates } = await importProperties(
       data,
       ({ current, total, status }) => {
         progressBar.value = Math.round((current / total) * 100);
@@ -345,16 +355,79 @@ function setupImportForm() {
     );
 
     progressTxt.textContent = '完了しました';
+
+    const escHtml = (s) => String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+
+    const addrDupHtml = addressDuplicates.length > 0 ? `
+      <details class="mt-3 text-left">
+        <summary class="cursor-pointer text-xs text-warning font-semibold">
+          ⚠️ 住所重複 ${addressDuplicates.length} 件（登録済み・要確認）
+        </summary>
+        <ul class="mt-2 text-xs text-base-content/70 list-disc list-inside max-h-40 overflow-y-auto space-y-0.5">
+          ${addressDuplicates.map((d) => `
+            <li>
+              ${d.row}行目 「${escHtml(d.property_name)}」
+              <span class="text-base-content/40">
+                — 既存: 「${escHtml(d.existing_name)}」 / ${escHtml(d.address)}
+              </span>
+            </li>`).join('')}
+        </ul>
+      </details>` : '';
+
     resultEl.innerHTML =
       `<span class="text-success">✅ 成功 ${success} 件</span>` +
       (failed  > 0 ? `　<span class="text-error">❌ 失敗 ${failed} 件</span>` : '') +
-      (skipped > 0 ? `　<span class="text-warning">⚠️ 座標なし ${skipped} 件</span>` : '');
+      (skipped > 0 ? `　<span class="text-warning">⏭ 完全重複スキップ ${skipped} 件</span>` : '') +
+      addrDupHtml;
     resultEl.classList.remove('hidden');
     btnCancel.disabled    = false;
     btnCancel.textContent = '閉じる';
 
     if (success > 0) await loadFromSupabase();
   });
+}
+
+/**
+ * 入力中の物件と重複している既存物件を探す。
+ * 物件名+住所の完全一致を優先、なければ住所のみ一致を返す。
+ * @returns {{ kind: 'full'|'address', property: Object }|null}
+ */
+function findDuplicate(input) {
+  const inputFullKey = propertyDupKey(input);
+  const inputAddrKey = addressDupKey(input.address);
+  if (!inputAddrKey) return null;
+
+  const all = getAllProperties();
+  const fullMatch = all.find((p) => propertyDupKey(p) === inputFullKey);
+  if (fullMatch) return { kind: 'full', property: fullMatch };
+
+  const addrMatch = all.find((p) => addressDupKey(p.address) === inputAddrKey);
+  if (addrMatch) return { kind: 'address', property: addrMatch };
+
+  return null;
+}
+
+/**
+ * 重複確認ダイアログを表示する。
+ * @returns {boolean} 続行する場合 true
+ */
+function confirmDuplicate(dup, input) {
+  if (dup.kind === 'full') {
+    return window.confirm(
+      `同じ物件名・住所の物件が既に登録されています。\n\n` +
+      `既存: ${dup.property.property_name}\n住所: ${dup.property.address}\n\n` +
+      `このまま追加しますか？`
+    );
+  }
+  return window.confirm(
+    `同じ住所の物件が既に登録されています。\n\n` +
+    `既存: ${dup.property.property_name}\n` +
+    `今回: ${input.property_name}\n` +
+    `住所: ${dup.property.address}\n\n` +
+    `別物件として追加しますか？`
+  );
 }
 
 /**
