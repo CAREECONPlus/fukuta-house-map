@@ -285,6 +285,14 @@
         <div class="form-control">
           <label class="label"><span class="label-text">住所 <span class="text-error">*</span></span></label>
           <input type="text" name="address" class="input input-bordered input-sm" required placeholder="例：岐阜県関市○○1-2-3" />
+          <div class="flex items-center justify-between mt-1">
+            <button type="button" id="btn-pin-adjust" class="btn btn-xs btn-outline gap-1">
+              <i data-lucide="map-pin" class="w-3 h-3"></i>地図でピン位置を調整
+            </button>
+            <span id="pin-adjust-status" class="text-xs text-base-content/50"></span>
+          </div>
+          <input type="hidden" name="latitude" value="" />
+          <input type="hidden" name="longitude" value="" />
         </div>
         <div class="form-control">
           <label class="label"><span class="label-text">物件種別</span></label>
@@ -393,6 +401,26 @@
           <button type="submit" class="btn btn-primary">記録する</button>
         </div>
       </form>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
+  <!-- ===== モーダル：ピン位置調整 ===== -->
+  <dialog id="modal-pin-adjust" class="modal">
+    <div class="modal-box w-11/12 max-w-2xl h-[80vh] flex flex-col">
+      <h3 class="font-bold text-lg mb-1">ピン位置を調整</h3>
+      <p class="text-xs text-base-content/60 mb-2">
+        ピンをドラッグするか、地図をクリックして正確な位置に動かしてください。
+      </p>
+      <div id="pin-adjust-map" class="flex-1 rounded-lg overflow-hidden border border-base-300"></div>
+      <div class="text-xs text-base-content/60 mt-2 font-mono" id="pin-adjust-coords">座標：—</div>
+      <div class="modal-action flex flex-wrap gap-1">
+        <button type="button" id="btn-pin-search-address" class="btn btn-ghost btn-sm gap-1">
+          <i data-lucide="search" class="w-3 h-3"></i>住所から検索
+        </button>
+        <button type="button" id="btn-pin-cancel" class="btn btn-ghost btn-sm">キャンセル</button>
+        <button type="button" id="btn-pin-confirm" class="btn btn-primary btn-sm">この位置で確定</button>
+      </div>
     </div>
     <form method="dialog" class="modal-backdrop"><button>close</button></form>
   </dialog>

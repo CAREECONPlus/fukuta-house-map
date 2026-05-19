@@ -14,6 +14,7 @@ import {
 } from './supabase.js';
 import { FIELD_DEFS, analyzeCsv, parseCsvWithMapping, importProperties } from './import.js';
 import { propertyDupKey, addressDupKey, parseFlexibleDate, formatDateJp } from './utils.js';
+import { openPinAdjustModal } from './pinAdjust.js';
 
 // ===== デモ用サンプルデータ（Supabase 未接続時のみ使用）=====
 const DEMO_PROPERTIES = [
@@ -97,10 +98,37 @@ const DEMO_PROPERTIES = [
   setupImportForm();
   // 施工完了年月の入力プレビュー（input時に再評価）
   document.getElementById('input-completed-at')?.addEventListener('input', updateCompletedAtPreview);
-  // 物件追加ボタンを押したときもプレビューをリセット
+  // 物件追加ボタンを押したときもプレビュー/ピン状態をリセット
   document.getElementById('btn-add')?.addEventListener('click', () => {
     const preview = document.getElementById('completed-at-preview');
     if (preview) preview.textContent = '';
+    updatePinAdjustStatus(false);
+  });
+  // 住所を変更したら手動座標は破棄（次回送信時に再ジオコード）
+  document.querySelector('#form-add-property [name="address"]')?.addEventListener('input', () => {
+    const form = document.getElementById('form-add-property');
+    form.querySelector('[name="latitude"]').value  = '';
+    form.querySelector('[name="longitude"]').value = '';
+    updatePinAdjustStatus(false);
+  });
+  // ピン位置調整ボタン
+  document.getElementById('btn-pin-adjust')?.addEventListener('click', () => {
+    const form = document.getElementById('form-add-property');
+    const address = form?.querySelector('[name="address"]')?.value?.trim();
+    if (!address) {
+      alert('住所を入力してから地図で調整してください。');
+      return;
+    }
+    const lat = parseFloat(form.querySelector('[name="latitude"]').value);
+    const lng = parseFloat(form.querySelector('[name="longitude"]').value);
+    openPinAdjustModal(
+      { lat, lng, address },
+      (pos) => {
+        form.querySelector('[name="latitude"]').value  = pos.lat;
+        form.querySelector('[name="longitude"]').value = pos.lng;
+        updatePinAdjustStatus(false);
+      }
+    );
   });
 })();
 
@@ -169,7 +197,16 @@ function setupAddForm() {
     submitBtn.textContent = isEditing ? '更新中...' : '追加中...';
 
     try {
-      const { lat, lng } = await geocodeAddress(data.address);
+      // ピン位置が手動調整されていればその座標を優先、なければ住所をジオコード
+      const manualLat = parseFloat(data.latitude);
+      const manualLng = parseFloat(data.longitude);
+      let lat, lng;
+      if (Number.isFinite(manualLat) && Number.isFinite(manualLng)) {
+        lat = manualLat;
+        lng = manualLng;
+      } else {
+        ({ lat, lng } = await geocodeAddress(data.address));
+      }
 
       const propertyData = {
         property_name: data.property_name,
@@ -218,19 +255,41 @@ function setupAddForm() {
  */
 function openEditForm(property) {
   const form = document.getElementById('form-add-property');
-  form.querySelector('[name="property_id"]').value      = property.id;
-  form.querySelector('[name="property_name"]').value    = property.property_name    || '';
-  form.querySelector('[name="address"]').value          = property.address          || '';
-  form.querySelector('[name="brand"]').value            = property.brand            || '';
-  form.querySelector('[name="is_developed"]').checked   = property.is_developed     || false;
-  form.querySelector('[name="completed_at"]').value = property.completed_at?.substring(0, 7).replace('-', '/') || '';
-  form.querySelector('[name="phone_number"]').value = property.phone_number || '';
-  form.querySelector('[name="notes"]').value        = property.notes        || '';
+  form.querySelector('[name="property_id"]').value    = property.id;
+  form.querySelector('[name="property_name"]').value  = property.property_name    || '';
+  form.querySelector('[name="address"]').value        = property.address          || '';
+  form.querySelector('[name="brand"]').value          = property.brand            || '';
+  form.querySelector('[name="is_developed"]').checked = property.is_developed     || false;
+  form.querySelector('[name="completed_at"]').value   = property.completed_at?.substring(0, 7).replace('-', '/') || '';
+  form.querySelector('[name="phone_number"]').value   = property.phone_number || '';
+  form.querySelector('[name="notes"]').value          = property.notes        || '';
+  form.querySelector('[name="latitude"]').value       = property.latitude ?? '';
+  form.querySelector('[name="longitude"]').value      = property.longitude ?? '';
   updateCompletedAtPreview();
+  updatePinAdjustStatus(true);
 
   document.getElementById('modal-add-title').textContent  = '物件を編集';
   document.getElementById('modal-add-submit').textContent = '更新する';
   document.getElementById('modal-add').showModal();
+}
+
+/**
+ * ピン調整済みかどうかを表示する小さなステータス
+ */
+function updatePinAdjustStatus(isPreset) {
+  const el = document.getElementById('pin-adjust-status');
+  if (!el) return;
+  const form = document.getElementById('form-add-property');
+  const lat = form?.querySelector('[name="latitude"]')?.value;
+  const lng = form?.querySelector('[name="longitude"]')?.value;
+  if (lat && lng) {
+    el.textContent = isPreset ? '現在の登録位置' : '✓ ピン位置を手動調整済み';
+    el.classList.remove('text-error');
+    el.classList.add('text-success');
+  } else {
+    el.textContent = '住所から自動取得';
+    el.classList.remove('text-success', 'text-error');
+  }
 }
 
 /**
