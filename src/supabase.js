@@ -103,6 +103,14 @@ export async function deletePropertyDb(id) {
   await _delete('properties', { id: `eq.${id}` });
 }
 
+/**
+ * 複数IDの物件を一括削除する（PostgREST の in.() フィルタ）
+ */
+export async function deletePropertiesDb(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return;
+  await _delete('properties', { id: `in.(${ids.join(',')})` });
+}
+
 // ===== maintenance =====
 
 export async function fetchMaintenance(propertyId) {

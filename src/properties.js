@@ -7,6 +7,7 @@ import { showDetailPanel } from './ui.js?v=7';
 let allProperties = [];
 let _lastFiltered  = []; // エクスポート・ビュー切替用に最新フィルタ結果を保持
 let _currentView   = 'map'; // 'map' | 'list'
+const _selectedIds = new Set(); // リストビューで選択中の物件ID
 
 // 変更履歴 Array<{property_id, property_name, changed_at, changes}>
 const _changeLog = [];
@@ -94,21 +95,44 @@ function renderListView(properties) {
   const container = document.getElementById('list-view');
   if (!container) return;
 
-  if (properties.length === 0) {
-    container.innerHTML = `
-      <div class="flex items-center justify-center h-64 text-base-content/40 text-sm">
-        条件に一致する物件がありません
-      </div>`;
-    return;
-  }
+  // 表示外になった物件は選択状態から除外
+  const visibleIds = new Set(properties.map((p) => p.id));
+  [..._selectedIds].forEach((id) => { if (!visibleIds.has(id)) _selectedIds.delete(id); });
 
   const brandLabel = (b) =>
     ({ fukuta_house: 'フクタハウス', urban_suite: 'アーバンスイート', other: 'その他' }[b] || b || '');
 
-  container.innerHTML = `
+  const toolbar = `
+    <div class="sticky top-0 z-20 bg-base-100 border-b border-base-300 px-3 py-2 flex flex-wrap items-center gap-2">
+      <span class="text-xs text-base-content/60">
+        <span id="list-selected-count">${_selectedIds.size}</span> 件選択中 / 表示中 ${properties.length} 件
+      </span>
+      <button id="btn-delete-selected" class="btn btn-error btn-xs gap-1" ${_selectedIds.size === 0 ? 'disabled' : ''}>
+        <i data-lucide="trash-2" class="w-3 h-3"></i>選択削除
+      </button>
+      <button id="btn-delete-filtered" class="btn btn-error btn-outline btn-xs gap-1 ml-auto" ${properties.length === 0 ? 'disabled' : ''}>
+        <i data-lucide="alert-triangle" class="w-3 h-3"></i>絞り込み結果を全削除
+      </button>
+    </div>`;
+
+  if (properties.length === 0) {
+    container.innerHTML = toolbar + `
+      <div class="flex items-center justify-center h-64 text-base-content/40 text-sm">
+        条件に一致する物件がありません
+      </div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return;
+  }
+
+  const allSelected = properties.length > 0 && properties.every((p) => _selectedIds.has(p.id));
+
+  container.innerHTML = toolbar + `
     <table class="table table-zebra table-sm w-full">
-      <thead class="sticky top-0 bg-base-200 z-10 shadow-sm">
+      <thead class="sticky top-[42px] bg-base-200 z-10 shadow-sm">
         <tr class="text-xs">
+          <th class="w-8">
+            <input type="checkbox" id="list-select-all" class="checkbox checkbox-xs" ${allSelected ? 'checked' : ''} />
+          </th>
           <th>物件名</th>
           <th class="hidden lg:table-cell">住所</th>
           <th>物件種別</th>
@@ -124,10 +148,13 @@ function renderListView(properties) {
           const completed = p.completed_at
             ? p.completed_at.substring(0, 7).replace('-', '年') + '月' : '—';
           const color = getMarkerColor(p.completed_at);
+          const checked = _selectedIds.has(p.id) ? 'checked' : '';
           return `
-            <tr class="cursor-pointer hover:bg-base-200 active:bg-base-300 transition-colors"
-                data-list-id="${p.id}">
-              <td>
+            <tr class="hover:bg-base-200 transition-colors" data-list-id="${p.id}">
+              <td class="w-8" data-role="check">
+                <input type="checkbox" class="checkbox checkbox-xs list-row-check" data-id="${p.id}" ${checked} />
+              </td>
+              <td class="cursor-pointer" data-role="open">
                 <div class="flex items-center gap-2">
                   <span class="w-2.5 h-2.5 rounded-full flex-shrink-0"
                         style="background:${color}"></span>
@@ -139,26 +166,84 @@ function renderListView(properties) {
                   </div>
                 </div>
               </td>
-              <td class="hidden lg:table-cell text-xs text-base-content/70 max-w-[220px]">
+              <td class="hidden lg:table-cell text-xs text-base-content/70 max-w-[220px] cursor-pointer" data-role="open">
                 <span class="block truncate">${escHtml(p.address)}</span>
               </td>
-              <td class="text-xs">${escHtml(brandLabel(p.brand))}</td>
-              <td class="hidden sm:table-cell text-xs">${escHtml(completed)}</td>
-              <td class="text-xs">${escHtml(age)}</td>
-              <td class="hidden sm:table-cell text-xs">${escHtml(p.phone_number || '—')}</td>
+              <td class="text-xs cursor-pointer" data-role="open">${escHtml(brandLabel(p.brand))}</td>
+              <td class="hidden sm:table-cell text-xs cursor-pointer" data-role="open">${escHtml(completed)}</td>
+              <td class="text-xs cursor-pointer" data-role="open">${escHtml(age)}</td>
+              <td class="hidden sm:table-cell text-xs cursor-pointer" data-role="open">${escHtml(p.phone_number || '—')}</td>
             </tr>`;
         }).join('')}
       </tbody>
     </table>
   `;
 
-  // 行クリック → 詳細パネルを開く
-  container.querySelectorAll('[data-list-id]').forEach((tr) => {
-    tr.addEventListener('click', () => {
+  // セルクリックで詳細パネル
+  container.querySelectorAll('td[data-role="open"]').forEach((td) => {
+    td.addEventListener('click', () => {
+      const tr   = td.closest('tr');
       const prop = properties.find((p) => p.id === tr.getAttribute('data-list-id'));
       if (prop) showDetailPanel(prop);
     });
   });
+
+  // 行チェックボックス
+  container.querySelectorAll('.list-row-check').forEach((cb) => {
+    cb.addEventListener('change', (e) => {
+      const id = e.target.dataset.id;
+      if (e.target.checked) _selectedIds.add(id);
+      else                  _selectedIds.delete(id);
+      _refreshSelectionUI(properties);
+    });
+  });
+
+  // 全選択チェックボックス
+  document.getElementById('list-select-all')?.addEventListener('change', (e) => {
+    if (e.target.checked) properties.forEach((p) => _selectedIds.add(p.id));
+    else                  properties.forEach((p) => _selectedIds.delete(p.id));
+    renderListView(properties); // 再描画してチェック状態を反映
+  });
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+/**
+ * 選択状態に応じてツールバーのUI（件数・ボタン活性）だけ更新する
+ */
+function _refreshSelectionUI(visibleProperties) {
+  const countEl = document.getElementById('list-selected-count');
+  if (countEl) countEl.textContent = String(_selectedIds.size);
+  const btn = document.getElementById('btn-delete-selected');
+  if (btn) btn.disabled = _selectedIds.size === 0;
+  const all = document.getElementById('list-select-all');
+  if (all) {
+    all.checked = visibleProperties.length > 0 && visibleProperties.every((p) => _selectedIds.has(p.id));
+  }
+}
+
+/**
+ * 現在選択されている物件ID一覧を返す（一括削除用）
+ */
+export function getSelectedIds() {
+  return [..._selectedIds];
+}
+
+/**
+ * 現在のフィルタ結果（全物件）IDを返す（絞り込み結果全削除用）
+ */
+export function getFilteredIds() {
+  return _lastFiltered.map((p) => p.id);
+}
+
+/**
+ * 複数IDをローカル状態から除去してリストを再描画する
+ */
+export function removeProperties(ids) {
+  const set = new Set(ids);
+  allProperties = allProperties.filter((p) => !set.has(p.id));
+  ids.forEach((id) => _selectedIds.delete(id));
+  applyFilterAndRender();
 }
 
 /**

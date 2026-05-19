@@ -2,7 +2,7 @@
  * main.js — アプリ初期化
  */
 import { initMap } from './map.js?v=7';
-import { renderPropertyList, applyFilterAndRender, addProperty, updateProperty, deleteProperty, setViewMode, exportFilteredCsv, getAllProperties } from './properties.js?v=8';
+import { renderPropertyList, applyFilterAndRender, addProperty, updateProperty, deleteProperty, setViewMode, exportFilteredCsv, getAllProperties, getSelectedIds, getFilteredIds, removeProperties } from './properties.js?v=8';
 import { setupUI } from './ui.js?v=7';
 import { addMaintenance } from './maintenance.js';
 import {
@@ -11,6 +11,7 @@ import {
   insertProperty,
   updatePropertyDb,
   deletePropertyDb,
+  deletePropertiesDb,
 } from './supabase.js';
 import { FIELD_DEFS, analyzeCsv, parseCsvWithMapping, importProperties } from './import.js';
 import { propertyDupKey, addressDupKey, parseFlexibleDate, formatDateJp } from './utils.js';
@@ -111,6 +112,23 @@ const DEMO_PROPERTIES = [
     form.querySelector('[name="longitude"]').value = '';
     updatePinAdjustStatus(false);
   });
+  // 一括削除ボタン（リストビューのツールバー内、再描画されるのでイベント委譲）
+  document.getElementById('list-view')?.addEventListener('click', async (e) => {
+    if (e.target.closest('#btn-delete-selected')) {
+      const ids = getSelectedIds();
+      if (ids.length === 0) return;
+      if (!window.confirm(`選択中の ${ids.length} 件を削除します。この操作は元に戻せません。\n本当に実行しますか？`)) return;
+      await handleBulkDelete(ids);
+    } else if (e.target.closest('#btn-delete-filtered')) {
+      const ids = getFilteredIds();
+      if (ids.length === 0) return;
+      if (!window.confirm(`現在の絞り込み結果 ${ids.length} 件をすべて削除します。\nこの操作は元に戻せません。本当に実行しますか？`)) return;
+      // 二重確認
+      if (!window.confirm(`【最終確認】${ids.length} 件を削除します。よろしいですか？`)) return;
+      await handleBulkDelete(ids);
+    }
+  });
+
   // ピン位置調整ボタン
   document.getElementById('btn-pin-adjust')?.addEventListener('click', () => {
     const form = document.getElementById('form-add-property');
@@ -161,6 +179,21 @@ async function handleDelete(property) {
     }
   }
   deleteProperty(property);
+}
+
+/**
+ * 複数物件を一括削除する。
+ */
+async function handleBulkDelete(ids) {
+  if (isSupabaseConfigured()) {
+    try {
+      await deletePropertiesDb(ids);
+    } catch (err) {
+      alert('一括削除に失敗しました: ' + err.message);
+      return;
+    }
+  }
+  removeProperties(ids);
 }
 
 // ===== 物件追加 / 編集フォーム =====
