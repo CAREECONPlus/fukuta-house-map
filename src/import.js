@@ -8,26 +8,26 @@ import { propertyDupKey, addressDupKey, parseFlexibleDate } from './utils.js';
  * システム項目の定義
  */
 export const FIELD_DEFS = [
-  { key: 'property_name',    label: '物件名',      required: true,  hint: '例：○○邸、△△アパート' },
-  { key: 'address',          label: '住所',        required: true,  hint: '例：岐阜県関市○○1-2-3' },
-  { key: 'brand',            label: '物件種別',    required: false, hint: 'フクタハウス / アーバンスイート / その他' },
-  { key: 'completed_at',     label: '施工完了年月', required: false, hint: 'YYYY-MM または YYYY年MM月 など' },
-  { key: 'person_in_charge', label: '担当者',      required: false, hint: '例：田中' },
-  { key: 'is_developed',     label: '自社開発物件', required: false, hint: '○ or true で自社開発扱い' },
-  { key: 'notes',            label: '備考',        required: false, hint: '自由記述' },
+  { key: 'property_name', label: '物件名',      required: true,  hint: '例：○○邸、△△アパート' },
+  { key: 'address',       label: '住所',        required: true,  hint: '例：岐阜県関市○○1-2-3' },
+  { key: 'brand',         label: '物件種別',    required: false, hint: 'フクタハウス / アーバンスイート / その他' },
+  { key: 'completed_at',  label: '施工完了年月', required: false, hint: 'YYYY-MM、YYYY年MM月、令和2年10月 など' },
+  { key: 'phone_number',  label: '電話番号',    required: false, hint: '例：0575-XX-XXXX' },
+  { key: 'is_developed',  label: '自社開発物件', required: false, hint: '○ or true で自社開発扱い' },
+  { key: 'notes',         label: '備考',        required: false, hint: '自由記述' },
 ];
 
 /**
  * 列名から自動マッピングを推定するキーワード辞書
  */
 const AUTO_MAP_KEYWORDS = {
-  property_name:    ['物件名', '名称', '建物名', '物件', 'property_name'],
-  address:          ['住所', '所在地', '住所・所在地', 'address'],
-  brand:            ['物件種別', '種別', 'ブランド', 'brand'],
-  completed_at:     ['施工完了', '施工完了年月', '竣工', '完成', '竣工年月', '完成年月', '施工年月', 'completed_at'],
-  person_in_charge: ['担当者', '担当', '営業', '営業担当', 'person_in_charge'],
-  is_developed:     ['自社開発', '開発物件', '自社', 'is_developed'],
-  notes:            ['備考', 'メモ', '備考欄', 'notes'],
+  property_name: ['物件名', '名称', '建物名', '物件', 'property_name'],
+  address:       ['住所', '所在地', '住所・所在地', 'address'],
+  brand:         ['物件種別', '種別', 'ブランド', 'brand'],
+  completed_at:  ['施工完了', '施工完了年月', '竣工', '完成', '竣工年月', '完成年月', '施工年月', 'completed_at'],
+  phone_number:  ['電話番号', '電話', 'TEL', 'tel', 'phone', 'phone_number', '連絡先'],
+  is_developed:  ['自社開発', '開発物件', '自社', 'is_developed'],
+  notes:         ['備考', 'メモ', '備考欄', 'notes'],
 };
 
 /**
@@ -102,14 +102,14 @@ export function parseCsvWithMapping(csvText, mapping) {
     if (!address) { errors.push(`${i + 1}行目: 住所が空です`); continue; }
 
     data.push({
-      property_name:    name,
-      address:          address,
-      brand:            normalizeBrand(get('brand')),
-      completed_at:     normalizeDate(get('completed_at')),
-      person_in_charge: get('person_in_charge') || null,
-      is_developed:     normalizeBool(get('is_developed')),
-      notes:            get('notes') || null,
-      is_visible:       true,
+      property_name: name,
+      address:       address,
+      brand:         normalizeBrand(get('brand')),
+      completed_at:  normalizeDate(get('completed_at')),
+      phone_number:  get('phone_number') || null,
+      is_developed:  normalizeBool(get('is_developed')),
+      notes:         get('notes') || null,
+      is_visible:    true,
     });
   }
 

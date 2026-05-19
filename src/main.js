@@ -24,7 +24,7 @@ const DEMO_PROPERTIES = [
     brand: 'fukuta_house',
     is_developed: false,
     completed_at: '2022-03',
-    person_in_charge: '田中',
+    phone_number: '0575-00-0000',
     latitude: 35.4943,
     longitude: 136.9189,
     notes: 'デモデータです',
@@ -37,7 +37,7 @@ const DEMO_PROPERTIES = [
     brand: 'fukuta_house',
     is_developed: false,
     completed_at: '2018-06',
-    person_in_charge: '鈴木',
+    phone_number: '0575-00-0001',
     latitude: 35.4960,
     longitude: 136.9150,
     notes: 'デモデータです',
@@ -50,7 +50,7 @@ const DEMO_PROPERTIES = [
     brand: 'urban_suite',
     is_developed: false,
     completed_at: '2010-11',
-    person_in_charge: '佐藤',
+    phone_number: '0575-00-0002',
     latitude: 35.4880,
     longitude: 136.9230,
     notes: 'デモデータです',
@@ -63,7 +63,7 @@ const DEMO_PROPERTIES = [
     brand: 'fukuta_house',
     is_developed: true,
     completed_at: '2014-09',
-    person_in_charge: '田中',
+    phone_number: '0575-00-0000',
     latitude: 35.5010,
     longitude: 136.9100,
     notes: 'デモデータです',
@@ -172,16 +172,16 @@ function setupAddForm() {
       const { lat, lng } = await geocodeAddress(data.address);
 
       const propertyData = {
-        property_name:    data.property_name,
-        address:          data.address,
-        brand:            data.brand            || null,
-        is_developed:     data.is_developed === 'on',
-        completed_at:     completedAt,
-        person_in_charge: data.person_in_charge || null,
-        notes:            data.notes            || null,
-        latitude:         lat,
-        longitude:        lng,
-        is_visible:       true,
+        property_name: data.property_name,
+        address:       data.address,
+        brand:         data.brand        || null,
+        is_developed:  data.is_developed === 'on',
+        completed_at:  completedAt,
+        phone_number:  data.phone_number || null,
+        notes:         data.notes        || null,
+        latitude:      lat,
+        longitude:     lng,
+        is_visible:    true,
       };
 
       if (isEditing) {
@@ -223,9 +223,9 @@ function openEditForm(property) {
   form.querySelector('[name="address"]').value          = property.address          || '';
   form.querySelector('[name="brand"]').value            = property.brand            || '';
   form.querySelector('[name="is_developed"]').checked   = property.is_developed     || false;
-  form.querySelector('[name="completed_at"]').value     = property.completed_at?.substring(0, 7).replace('-', '/') || '';
-  form.querySelector('[name="person_in_charge"]').value = property.person_in_charge || '';
-  form.querySelector('[name="notes"]').value            = property.notes            || '';
+  form.querySelector('[name="completed_at"]').value = property.completed_at?.substring(0, 7).replace('-', '/') || '';
+  form.querySelector('[name="phone_number"]').value = property.phone_number || '';
+  form.querySelector('[name="notes"]').value        = property.notes        || '';
   updateCompletedAtPreview();
 
   document.getElementById('modal-add-title').textContent  = '物件を編集';

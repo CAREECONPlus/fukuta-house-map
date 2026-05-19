@@ -20,15 +20,14 @@ export function setupUI(onFilterChange = () => {}, onEdit = () => {}, onDelete =
   _onAddMaintenance = onAddMaintenance;
 
   // フィルタ変更（select）
-  ['filter-brand', 'filter-person'].forEach((id) => {
-    document.getElementById(id)?.addEventListener('change', onFilterChange);
-  });
+  document.getElementById('filter-brand')?.addEventListener('change', onFilterChange);
   // 築年数（数値入力）
   ['filter-age-min', 'filter-age-max'].forEach((id) => {
     document.getElementById(id)?.addEventListener('input', onFilterChange);
   });
   // フィルタ変更（text / checkbox）
   document.getElementById('filter-search')?.addEventListener('input', onFilterChange);
+  document.getElementById('filter-phone')?.addEventListener('input', onFilterChange);
   document.getElementById('filter-developed')?.addEventListener('change', onFilterChange);
 
   // フィルタリセット（PC・モバイル共通）
@@ -37,7 +36,7 @@ export function setupUI(onFilterChange = () => {}, onEdit = () => {}, onDelete =
     document.getElementById('filter-brand').value       = '';
     document.getElementById('filter-age-min').value     = '';
     document.getElementById('filter-age-max').value     = '';
-    document.getElementById('filter-person').value      = '';
+    document.getElementById('filter-phone').value       = '';
     document.getElementById('filter-developed').checked = false;
     onFilterChange();
   };
@@ -205,7 +204,7 @@ function _renderDetailContent(property) {
         </div>` : ''}
       ${row('施工完了', completedLabel)}
       ${row('経過年数', age)}
-      ${row('担当者',   property.person_in_charge)}
+      ${phoneRow(property.phone_number)}
       ${property.notes ? row('備考', property.notes) : ''}
     </dl>
 
@@ -333,7 +332,7 @@ async function openDetailModal(property) {
     ['物件種別', brandLabel],
     ['施工完了', completedLabel],
     ['経過年数', age],
-    ['担当者',   property.person_in_charge],
+    ['電話番号', property.phone_number],
     ['備考',     property.notes],
   ].filter(([, v]) => v);
 
@@ -413,6 +412,22 @@ function row(label, value) {
     <div class="flex gap-2">
       <dt class="text-base-content/50 w-20 flex-shrink-0">${label}</dt>
       <dd class="font-medium flex-1 break-all">${escHtml(value)}</dd>
+    </div>`;
+}
+
+/**
+ * 電話番号行: tel: リンクで発信できるようにする
+ */
+function phoneRow(phone) {
+  if (!phone) return '';
+  const safe = escHtml(phone);
+  const href = phone.replace(/[^\d+]/g, '');
+  return `
+    <div class="flex gap-2">
+      <dt class="text-base-content/50 w-20 flex-shrink-0">電話番号</dt>
+      <dd class="font-medium flex-1 break-all">
+        <a href="tel:${href}" class="link link-primary">${safe}</a>
+      </dd>
     </div>`;
 }
 

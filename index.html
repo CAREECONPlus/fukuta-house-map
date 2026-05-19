@@ -121,14 +121,18 @@
             </div>
           </div>
 
-          <!-- 担当者フィルタ -->
+          <!-- 電話番号フィルタ（部分一致） -->
           <div class="form-control mb-3">
             <label class="label py-0 mb-1">
-              <span class="label-text text-xs font-medium">担当者</span>
+              <span class="label-text text-xs font-medium">電話番号</span>
             </label>
-            <select id="filter-person" class="select select-bordered select-sm w-full">
-              <option value="">すべて</option>
-            </select>
+            <input
+              type="tel"
+              id="filter-phone"
+              class="input input-bordered input-sm w-full"
+              placeholder="番号の一部で検索"
+              autocomplete="off"
+            />
           </div>
 
           <!-- 自社開発フィルタ -->
@@ -305,8 +309,8 @@
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div class="form-control">
-            <label class="label"><span class="label-text">担当者</span></label>
-            <input type="text" name="person_in_charge" class="input input-bordered input-sm" placeholder="例：田中" />
+            <label class="label"><span class="label-text">電話番号</span></label>
+            <input type="tel" name="phone_number" class="input input-bordered input-sm" placeholder="例：0575-xx-xxxx" autocomplete="off" />
           </div>
           <div class="form-control justify-end">
             <label class="label cursor-pointer gap-2 justify-start">

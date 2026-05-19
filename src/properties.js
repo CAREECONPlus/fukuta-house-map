@@ -59,16 +59,16 @@ export function exportFilteredCsv() {
   const brandLabel = (b) =>
     ({ fukuta_house: 'フクタハウス', urban_suite: 'アーバンスイート', other: 'その他' }[b] || b || '');
 
-  const headers = ['物件名', '住所', '物件種別', '施工完了年月', '経過年数（年）', '担当者', '自社開発物件', '備考'];
+  const headers = ['物件名', '住所', '物件種別', '施工完了年月', '経過年数（年）', '電話番号', '自社開発物件', '備考'];
   const rows = props.map((p) => [
-    p.property_name    || '',
-    p.address          || '',
+    p.property_name || '',
+    p.address       || '',
     brandLabel(p.brand),
     p.completed_at ? p.completed_at.substring(0, 7) : '',
     p.completed_at ? Math.floor(calcAgeYears(p.completed_at)).toString() : '',
-    p.person_in_charge || '',
+    p.phone_number  || '',
     p.is_developed ? '○' : '',
-    p.notes            || '',
+    p.notes         || '',
   ]);
 
   const csv = [headers, ...rows]
@@ -114,7 +114,7 @@ function renderListView(properties) {
           <th>物件種別</th>
           <th class="hidden sm:table-cell">施工完了</th>
           <th>築年数</th>
-          <th class="hidden sm:table-cell">担当者</th>
+          <th class="hidden sm:table-cell">電話番号</th>
         </tr>
       </thead>
       <tbody>
@@ -145,7 +145,7 @@ function renderListView(properties) {
               <td class="text-xs">${escHtml(brandLabel(p.brand))}</td>
               <td class="hidden sm:table-cell text-xs">${escHtml(completed)}</td>
               <td class="text-xs">${escHtml(age)}</td>
-              <td class="hidden sm:table-cell text-xs">${escHtml(p.person_in_charge || '—')}</td>
+              <td class="hidden sm:table-cell text-xs">${escHtml(p.phone_number || '—')}</td>
             </tr>`;
         }).join('')}
       </tbody>
@@ -203,7 +203,7 @@ export function updateProperty(updated) {
     // 変更されたフィールドだけ記録
     const LABELS = {
       property_name: '物件名', address: '住所', brand: '物件種別',
-      completed_at: '施工完了', person_in_charge: '担当者',
+      completed_at: '施工完了', phone_number: '電話番号',
       notes: '備考',
     };
     const changes = Object.entries(LABELS)
@@ -239,7 +239,7 @@ export function applyFilterAndRender() {
   const brandVal     = document.getElementById('filter-brand')?.value      || '';
   const ageMinVal    = document.getElementById('filter-age-min')?.value    || '';
   const ageMaxVal    = document.getElementById('filter-age-max')?.value    || '';
-  const personVal    = document.getElementById('filter-person')?.value     || '';
+  const phoneVal     = (document.getElementById('filter-phone')?.value || '').replace(/[\s\-‐－ー]/g, '');
   const developedVal = document.getElementById('filter-developed')?.checked || false;
 
   const filtered = allProperties.filter((p) => {
@@ -248,9 +248,12 @@ export function applyFilterAndRender() {
       const address = _normalize(p.address);
       if (!name.includes(searchVal) && !address.includes(searchVal)) return false;
     }
-    if (brandVal     && p.brand            !== brandVal)    return false;
-    if (personVal    && p.person_in_charge !== personVal)   return false;
-    if (developedVal && !p.is_developed)                   return false;
+    if (brandVal     && p.brand !== brandVal)                          return false;
+    if (phoneVal) {
+      const phone = (p.phone_number || '').replace(/[\s\-‐－ー]/g, '');
+      if (!phone.includes(phoneVal)) return false;
+    }
+    if (developedVal && !p.is_developed)                              return false;
     if (ageMinVal !== '' || ageMaxVal !== '') {
       const age = calcAgeYears(p.completed_at);
       if (ageMinVal !== '' && age < Number(ageMinVal))     return false;
@@ -261,9 +264,6 @@ export function applyFilterAndRender() {
 
   // エクスポート用に最新結果を保持
   _lastFiltered = filtered;
-
-  // 担当者セレクト更新
-  updatePersonSelect(allProperties);
 
   // ビューに応じて描画を切り替える
   if (_currentView === 'list') {
@@ -334,28 +334,12 @@ function createPropertyCard(p) {
             <div class="flex gap-1 mt-1 flex-wrap">
               ${brandLabel ? `<span class="badge badge-sm ${brandBadgeClass}">${escHtml(brandLabel)}</span>` : ''}
               <span class="badge badge-sm badge-ghost">${age}</span>
-              ${p.person_in_charge ? `<span class="badge badge-sm badge-ghost">${escHtml(p.person_in_charge)}</span>` : ''}
+              ${p.phone_number ? `<span class="badge badge-sm badge-ghost">${escHtml(p.phone_number)}</span>` : ''}
             </div>
           </div>
         </div>
       </div>
     </div>`;
-}
-
-/**
- * 担当者セレクトボックスを更新する
- */
-function updatePersonSelect(properties) {
-  const select = document.getElementById('filter-person');
-  if (!select) return;
-
-  const persons = [...new Set(properties.map((p) => p.person_in_charge).filter(Boolean))];
-  const currentVal = select.value;
-
-  select.innerHTML = '<option value="">すべて</option>' +
-    persons.map((name) => `<option value="${escHtml(name)}">${escHtml(name)}</option>`).join('');
-
-  if (currentVal) select.value = currentVal;
 }
 
 /**
