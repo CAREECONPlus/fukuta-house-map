@@ -357,11 +357,20 @@ async function openDetailModal(property) {
 
   content.innerHTML = `
     <dl class="divide-y divide-base-200 mb-4">
-      ${fields.map(([label, value]) => `
-        <div class="flex gap-3 py-2">
-          <dt class="text-base-content/50 w-20 flex-shrink-0">${label}</dt>
-          <dd class="font-medium flex-1 break-all">${escHtml(value)}</dd>
-        </div>`).join('')}
+      ${fields.map(([label, value]) => {
+        const isPhone = label === '電話番号';
+        const href = isPhone ? value.replace(/[^\d+]/g, '') : '';
+        const valueHtml = isPhone
+          ? `<a href="tel:${href}" class="inline-flex items-center gap-1 text-base-content font-semibold underline decoration-base-content/30 underline-offset-2 hover:decoration-base-content/70">
+               <i data-lucide="phone" class="w-3.5 h-3.5 text-primary"></i>${escHtml(value)}
+             </a>`
+          : escHtml(value);
+        return `
+          <div class="flex gap-3 py-2">
+            <dt class="text-base-content/50 w-20 flex-shrink-0">${label}</dt>
+            <dd class="font-medium flex-1 break-all">${valueHtml}</dd>
+          </div>`;
+      }).join('')}
     </dl>
     <div class="text-xs font-semibold text-base-content/70 mb-2 flex items-center gap-1">
       <i data-lucide="clipboard-list" class="w-3.5 h-3.5"></i>点検履歴
@@ -427,7 +436,10 @@ function phoneRow(phone) {
     <div class="flex gap-2">
       <dt class="text-base-content/50 w-20 flex-shrink-0">電話番号</dt>
       <dd class="font-medium flex-1 break-all">
-        <a href="tel:${href}" class="link link-primary">${safe}</a>
+        <a href="tel:${href}"
+           class="inline-flex items-center gap-1 text-base-content font-semibold underline decoration-base-content/30 underline-offset-2 hover:decoration-base-content/70">
+          <i data-lucide="phone" class="w-3.5 h-3.5 text-primary"></i>${safe}
+        </a>
       </dd>
     </div>`;
 }
