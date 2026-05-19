@@ -16,6 +16,14 @@ import {
 import { FIELD_DEFS, MAINT_FIELD_DEFS, analyzeCsv, parseCsvWithMapping, parseMaintenanceCsvWithMapping, importProperties, importMaintenance } from './import.js';
 import { propertyDupKey, addressDupKey, parseFlexibleDate, formatDateJp } from './utils.js';
 import { openPinAdjustModal } from './pinAdjust.js';
+import {
+  loadPropertyTypes,
+  getPropertyTypes,
+  onPropertyTypesChanged,
+  addPropertyType,
+  updatePropertyType,
+  removePropertyType,
+} from './propertyTypes.js';
 
 // ===== デモ用サンプルデータ（Supabase 未接続時のみ使用）=====
 const DEMO_PROPERTIES = [
@@ -77,6 +85,15 @@ const DEMO_PROPERTIES = [
 (async () => {
   await window.__mapsReady;
   await initMap();
+
+  // 物件種別マスタを先に読み込む（ドロップダウン構築のため）
+  await loadPropertyTypes();
+  _renderBrandSelects();
+  onPropertyTypesChanged(() => {
+    _renderBrandSelects();
+    applyFilterAndRender(); // ラベル変更があるかもしれないので再描画
+  });
+  _setupTypesManager();
 
   setupUI(applyFilterAndRender, openEditForm, handleDelete, addMaintenance);
 
@@ -642,6 +659,123 @@ function confirmDuplicate(dup, input) {
     `住所: ${dup.property.address}\n\n` +
     `別物件として追加しますか？`
   );
+}
+
+/**
+ * 物件種別ドロップダウン（フォーム・フィルタ）を再描画する
+ */
+function _renderBrandSelects() {
+  const types = getPropertyTypes();
+  const formSel   = document.getElementById('form-brand-select');
+  const filterSel = document.getElementById('filter-brand');
+
+  if (formSel) {
+    const prev = formSel.value;
+    formSel.innerHTML = '<option value="">選択...</option>' +
+      types.map((t) => `<option value="${t.code}">${escAttr(t.label)}</option>`).join('');
+    if (prev && types.some((t) => t.code === prev)) formSel.value = prev;
+  }
+  if (filterSel) {
+    const prev = filterSel.value;
+    filterSel.innerHTML = '<option value="">すべて</option>' +
+      types.map((t) => `<option value="${t.code}">${escAttr(t.label)}</option>`).join('');
+    if (prev && types.some((t) => t.code === prev)) filterSel.value = prev;
+  }
+}
+
+function escAttr(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+/**
+ * 物件種別マスタ管理モーダルの配線
+ */
+function _setupTypesManager() {
+  // 「種別を管理」ボタン
+  document.getElementById('btn-manage-types')?.addEventListener('click', () => {
+    _renderTypesList();
+    document.getElementById('modal-types').showModal();
+  });
+
+  // 追加フォーム
+  document.getElementById('form-add-type')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd    = new FormData(e.target);
+    const label = (fd.get('label') || '').toString().trim();
+    const color = (fd.get('color') || '#6b7280').toString();
+    if (!label) return;
+    try {
+      await addPropertyType({ label, color });
+      e.target.reset();
+      e.target.querySelector('[name="color"]').value = '#6b7280';
+      _renderTypesList();
+    } catch (err) {
+      alert('追加に失敗しました: ' + err.message);
+    }
+  });
+}
+
+function _renderTypesList() {
+  const list = document.getElementById('types-list');
+  if (!list) return;
+  const types = getPropertyTypes();
+  if (types.length === 0) {
+    list.innerHTML = '<p class="text-xs text-base-content/40 py-3 text-center">種別がありません</p>';
+    return;
+  }
+  list.innerHTML = types.map((t) => `
+    <div class="flex items-center gap-2" data-type-id="${escAttr(t.id)}">
+      <input type="color" data-field="color" value="${escAttr(t.color || '#6b7280')}"
+             class="input input-bordered input-xs w-10 h-8 p-0.5" />
+      <input type="text" data-field="label" value="${escAttr(t.label)}"
+             class="input input-bordered input-sm flex-1" />
+      <button type="button" data-action="save" class="btn btn-xs btn-primary gap-1">
+        <i data-lucide="check" class="w-3 h-3"></i>保存
+      </button>
+      <button type="button" data-action="delete" class="btn btn-xs btn-ghost text-error" title="非表示にする">
+        <i data-lucide="trash-2" class="w-3 h-3"></i>
+      </button>
+    </div>
+  `).join('');
+
+  // イベント配線
+  list.querySelectorAll('[data-type-id]').forEach((row) => {
+    const id        = row.dataset.typeId;
+    const labelIn   = row.querySelector('[data-field="label"]');
+    const colorIn   = row.querySelector('[data-field="color"]');
+    const saveBtn   = row.querySelector('[data-action="save"]');
+    const deleteBtn = row.querySelector('[data-action="delete"]');
+
+    saveBtn.addEventListener('click', async () => {
+      const label = labelIn.value.trim();
+      const color = colorIn.value;
+      if (!label) { alert('ラベルが空です'); return; }
+      saveBtn.disabled = true;
+      try {
+        await updatePropertyType(id, { label, color });
+        saveBtn.classList.add('btn-success');
+        setTimeout(() => saveBtn.classList.remove('btn-success'), 1000);
+      } catch (err) {
+        alert('保存に失敗しました: ' + err.message);
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+
+    deleteBtn.addEventListener('click', async () => {
+      if (!window.confirm(`「${labelIn.value}」を非表示にしますか？\n（既存物件は表示されますが、新規選択肢から外れます）`)) return;
+      try {
+        await removePropertyType(id);
+        _renderTypesList();
+      } catch (err) {
+        alert('削除に失敗しました: ' + err.message);
+      }
+    });
+  });
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 /**

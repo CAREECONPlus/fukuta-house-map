@@ -3,6 +3,7 @@
  */
 import { renderMarkers, panTo, calcAge, getMarkerColor } from './map.js?v=7';
 import { showDetailPanel } from './ui.js?v=7';
+import { getLabel as getBrandLabel, getColor as getBrandColor } from './propertyTypes.js';
 
 let allProperties = [];
 let _lastFiltered  = []; // エクスポート・ビュー切替用に最新フィルタ結果を保持
@@ -57,14 +58,11 @@ export function exportFilteredCsv() {
   const props = _lastFiltered;
   if (props.length === 0) { alert('エクスポートする物件がありません'); return; }
 
-  const brandLabel = (b) =>
-    ({ fukuta_house: 'フクタハウス', urban_suite: 'アーバンスイート', other: 'その他' }[b] || b || '');
-
   const headers = ['物件名', '住所', '物件種別', '施工完了年月', '経過年数（年）', '電話番号', '自社開発物件', '備考'];
   const rows = props.map((p) => [
     p.property_name || '',
     p.address       || '',
-    brandLabel(p.brand),
+    getBrandLabel(p.brand),
     p.completed_at ? p.completed_at.substring(0, 7) : '',
     p.completed_at ? Math.floor(calcAgeYears(p.completed_at)).toString() : '',
     p.phone_number  || '',
@@ -98,9 +96,6 @@ function renderListView(properties) {
   // 表示外になった物件は選択状態から除外
   const visibleIds = new Set(properties.map((p) => p.id));
   [..._selectedIds].forEach((id) => { if (!visibleIds.has(id)) _selectedIds.delete(id); });
-
-  const brandLabel = (b) =>
-    ({ fukuta_house: 'フクタハウス', urban_suite: 'アーバンスイート', other: 'その他' }[b] || b || '');
 
   const toolbar = `
     <div class="sticky top-0 z-20 bg-base-100 border-b border-base-300 px-3 py-2 flex flex-wrap items-center gap-2">
@@ -169,7 +164,7 @@ function renderListView(properties) {
               <td class="hidden lg:table-cell text-xs text-base-content/70 max-w-[220px] cursor-pointer" data-role="open">
                 <span class="block truncate">${escHtml(p.address)}</span>
               </td>
-              <td class="text-xs cursor-pointer" data-role="open">${escHtml(brandLabel(p.brand))}</td>
+              <td class="text-xs cursor-pointer" data-role="open">${escHtml(getBrandLabel(p.brand))}</td>
               <td class="hidden sm:table-cell text-xs cursor-pointer" data-role="open">${escHtml(completed)}</td>
               <td class="text-xs cursor-pointer" data-role="open">${escHtml(age)}</td>
               <td class="hidden sm:table-cell text-xs cursor-pointer" data-role="open">${escHtml(p.phone_number || '—')}</td>
@@ -397,10 +392,10 @@ export function applyFilterAndRender() {
  * 物件カードHTML生成
  */
 function createPropertyCard(p) {
-  const color = getMarkerColor(p.completed_at);
-  const age = p.completed_at ? `築${Math.floor(calcAgeYears(p.completed_at))}年` : '不明';
-  const brandLabel = { fukuta_house: 'フクタハウス', urban_suite: 'アーバンスイート', other: 'その他' }[p.brand] || '';
-  const brandBadgeClass = p.brand === 'urban_suite' ? 'badge-urban-suite' : 'badge-primary badge-outline';
+  const color      = getMarkerColor(p.completed_at);
+  const age        = p.completed_at ? `築${Math.floor(calcAgeYears(p.completed_at))}年` : '不明';
+  const brandLabel = getBrandLabel(p.brand);
+  const brandColor = getBrandColor(p.brand);
 
   return `
     <div
@@ -417,7 +412,7 @@ function createPropertyCard(p) {
             </div>
             <p class="text-xs text-base-content/60 truncate">${escHtml(p.address)}</p>
             <div class="flex gap-1 mt-1 flex-wrap">
-              ${brandLabel ? `<span class="badge badge-sm ${brandBadgeClass}">${escHtml(brandLabel)}</span>` : ''}
+              ${brandLabel ? `<span class="badge badge-sm border-0 text-white" style="background:${brandColor}">${escHtml(brandLabel)}</span>` : ''}
               <span class="badge badge-sm badge-ghost">${age}</span>
               ${p.phone_number ? `<span class="badge badge-sm badge-ghost">${escHtml(p.phone_number)}</span>` : ''}
             </div>

@@ -11,6 +11,7 @@ import {
   isSupabaseConfigured,
 } from './supabase.js';
 import { propertyDupKey, addressDupKey, parseFlexibleDate } from './utils.js';
+import { normalizeBrandInput } from './propertyTypes.js';
 
 /**
  * システム項目の定義
@@ -18,7 +19,7 @@ import { propertyDupKey, addressDupKey, parseFlexibleDate } from './utils.js';
 export const FIELD_DEFS = [
   { key: 'property_name', label: '物件名',      required: true,  hint: '例：○○邸、△△アパート' },
   { key: 'address',       label: '住所',        required: true,  hint: '例：岐阜県関市○○1-2-3' },
-  { key: 'brand',         label: '物件種別',    required: false, hint: 'フクタハウス / アーバンスイート / その他' },
+  { key: 'brand',         label: '物件種別',    required: false, hint: '登録済みの種別ラベルと自動照合（管理画面で追加可）' },
   { key: 'completed_at',  label: '施工完了年月', required: false, hint: 'YYYY-MM、YYYY年MM月、令和2年10月 など' },
   { key: 'phone_number',  label: '電話番号',    required: false, hint: '例：0575-XX-XXXX' },
   { key: 'is_developed',  label: '自社開発物件', required: false, hint: '○ or true で自社開発扱い' },
@@ -362,12 +363,7 @@ export async function importProperties(data, onProgress) {
 // ===== 値の正規化 =====
 
 function normalizeBrand(val) {
-  if (!val) return null;
-  const v = val.trim();
-  if (['フクタハウス', 'fukuta_house', 'fukuta', 'FUKUTA'].includes(v)) return 'fukuta_house';
-  if (['アーバンスイート', 'urban_suite', 'urban', 'URBAN'].includes(v)) return 'urban_suite';
-  if (v) return 'other';
-  return null;
+  return normalizeBrandInput(val);
 }
 
 function normalizeDate(val) {

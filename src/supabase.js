@@ -111,6 +111,37 @@ export async function deletePropertiesDb(ids) {
   await _delete('properties', { id: `in.(${ids.join(',')})` });
 }
 
+// ===== property_types =====
+
+export async function fetchPropertyTypes() {
+  return _get('property_types', {
+    select:    '*',
+    is_active: 'is.true',
+    order:     'sort_order.asc,label.asc',
+  });
+}
+
+export async function insertPropertyType(data) {
+  const rows = await _post('property_types', data);
+  return Array.isArray(rows) ? rows[0] : rows;
+}
+
+export async function updatePropertyTypeDb(id, data) {
+  const rows = await _patch('property_types', { id: `eq.${id}` }, {
+    ...data,
+    updated_at: new Date().toISOString(),
+  });
+  return Array.isArray(rows) ? rows[0] : rows;
+}
+
+export async function deletePropertyTypeDb(id) {
+  // 物理削除ではなく論理削除（is_active=false）にする
+  await _patch('property_types', { id: `eq.${id}` }, {
+    is_active:  false,
+    updated_at: new Date().toISOString(),
+  });
+}
+
 // ===== maintenance =====
 
 export async function fetchMaintenance(propertyId) {

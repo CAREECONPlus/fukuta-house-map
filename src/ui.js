@@ -5,6 +5,7 @@ import { calcAge } from './map.js?v=7';
 import { getMaintenanceByProperty, deleteMaintenance } from './maintenance.js';
 import { openGoogleMapsNav } from './routes.js';
 import { getChangeLog } from './properties.js?v=7';
+import { getLabel as getBrandLabel } from './propertyTypes.js';
 
 let _currentProperty = null;
 let _onEdit              = null;
@@ -191,7 +192,7 @@ function _renderDetailContent(property) {
   const completedLabel = property.completed_at
     ? property.completed_at.substring(0, 7).replace('-', '年') + '月'
     : '不明';
-  const brandLabel = { fukuta_house: 'フクタハウス', urban_suite: 'アーバンスイート', other: 'その他' }[property.brand] || property.brand || '';
+  const brandLabel = getBrandLabel(property.brand);
 
   content.innerHTML = `
     <dl class="space-y-2 text-sm">
@@ -325,7 +326,7 @@ async function openDetailModal(property) {
   const age = calcAge(property.completed_at);
   const completedLabel = property.completed_at
     ? property.completed_at.replace('-', '年') + '月' : '不明';
-  const brandLabel = { fukuta_house: 'フクタハウス', urban_suite: 'アーバンスイート', other: 'その他' }[property.brand] || property.brand || '';
+  const brandLabel = getBrandLabel(property.brand);
 
   const fields = [
     ['住所',     property.address],
