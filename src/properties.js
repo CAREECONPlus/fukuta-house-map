@@ -3,10 +3,12 @@
  */
 import { renderMarkers, panTo, calcAge, getMarkerColor } from './map.js?v=7';
 import { showDetailPanel } from './ui.js?v=7';
+import { getLabel as getBrandLabel, getColor as getBrandColor } from './propertyTypes.js';
 
 let allProperties = [];
 let _lastFiltered  = []; // エクスポート・ビュー切替用に最新フィルタ結果を保持
 let _currentView   = 'map'; // 'map' | 'list'
+const _selectedIds = new Set(); // リストビューで選択中の物件ID
 
 // 変更履歴 Array<{property_id, property_name, changed_at, changes}>
 const _changeLog = [];
@@ -56,19 +58,16 @@ export function exportFilteredCsv() {
   const props = _lastFiltered;
   if (props.length === 0) { alert('エクスポートする物件がありません'); return; }
 
-  const brandLabel = (b) =>
-    ({ fukuta_house: 'フクタハウス', urban_suite: 'アーバンスイート', other: 'その他' }[b] || b || '');
-
-  const headers = ['物件名', '住所', '物件種別', '施工完了年月', '経過年数（年）', '担当者', '自社開発物件', '備考'];
+  const headers = ['物件名', '住所', '物件種別', '施工完了年月', '経過年数（年）', '電話番号', '自社開発物件', '備考'];
   const rows = props.map((p) => [
-    p.property_name    || '',
-    p.address          || '',
-    brandLabel(p.brand),
+    p.property_name || '',
+    p.address       || '',
+    getBrandLabel(p.brand),
     p.completed_at ? p.completed_at.substring(0, 7) : '',
     p.completed_at ? Math.floor(calcAgeYears(p.completed_at)).toString() : '',
-    p.person_in_charge || '',
+    p.phone_number  || '',
     p.is_developed ? '○' : '',
-    p.notes            || '',
+    p.notes         || '',
   ]);
 
   const csv = [headers, ...rows]
@@ -94,27 +93,47 @@ function renderListView(properties) {
   const container = document.getElementById('list-view');
   if (!container) return;
 
+  // 表示外になった物件は選択状態から除外
+  const visibleIds = new Set(properties.map((p) => p.id));
+  [..._selectedIds].forEach((id) => { if (!visibleIds.has(id)) _selectedIds.delete(id); });
+
+  const toolbar = `
+    <div class="sticky top-0 z-20 bg-base-100 border-b border-base-300 px-3 py-2 flex flex-wrap items-center gap-2">
+      <span class="text-xs text-base-content/60">
+        <span id="list-selected-count">${_selectedIds.size}</span> 件選択中 / 表示中 ${properties.length} 件
+      </span>
+      <button id="btn-delete-selected" class="btn btn-error btn-xs gap-1" ${_selectedIds.size === 0 ? 'disabled' : ''}>
+        <i data-lucide="trash-2" class="w-3 h-3"></i>選択削除
+      </button>
+      <button id="btn-delete-filtered" class="btn btn-error btn-outline btn-xs gap-1 ml-auto" ${properties.length === 0 ? 'disabled' : ''}>
+        <i data-lucide="alert-triangle" class="w-3 h-3"></i>絞り込み結果を全削除
+      </button>
+    </div>`;
+
   if (properties.length === 0) {
-    container.innerHTML = `
+    container.innerHTML = toolbar + `
       <div class="flex items-center justify-center h-64 text-base-content/40 text-sm">
         条件に一致する物件がありません
       </div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
     return;
   }
 
-  const brandLabel = (b) =>
-    ({ fukuta_house: 'フクタハウス', urban_suite: 'アーバンスイート', other: 'その他' }[b] || b || '');
+  const allSelected = properties.length > 0 && properties.every((p) => _selectedIds.has(p.id));
 
-  container.innerHTML = `
+  container.innerHTML = toolbar + `
     <table class="table table-zebra table-sm w-full">
-      <thead class="sticky top-0 bg-base-200 z-10 shadow-sm">
+      <thead class="sticky top-[42px] bg-base-200 z-10 shadow-sm">
         <tr class="text-xs">
+          <th class="w-8">
+            <input type="checkbox" id="list-select-all" class="checkbox checkbox-xs" ${allSelected ? 'checked' : ''} />
+          </th>
           <th>物件名</th>
           <th class="hidden lg:table-cell">住所</th>
           <th>物件種別</th>
           <th class="hidden sm:table-cell">施工完了</th>
           <th>築年数</th>
-          <th class="hidden sm:table-cell">担当者</th>
+          <th class="hidden sm:table-cell">電話番号</th>
         </tr>
       </thead>
       <tbody>
@@ -124,10 +143,13 @@ function renderListView(properties) {
           const completed = p.completed_at
             ? p.completed_at.substring(0, 7).replace('-', '年') + '月' : '—';
           const color = getMarkerColor(p.completed_at);
+          const checked = _selectedIds.has(p.id) ? 'checked' : '';
           return `
-            <tr class="cursor-pointer hover:bg-base-200 active:bg-base-300 transition-colors"
-                data-list-id="${p.id}">
-              <td>
+            <tr class="hover:bg-base-200 transition-colors" data-list-id="${p.id}">
+              <td class="w-8" data-role="check">
+                <input type="checkbox" class="checkbox checkbox-xs list-row-check" data-id="${p.id}" ${checked} />
+              </td>
+              <td class="cursor-pointer" data-role="open">
                 <div class="flex items-center gap-2">
                   <span class="w-2.5 h-2.5 rounded-full flex-shrink-0"
                         style="background:${color}"></span>
@@ -139,26 +161,84 @@ function renderListView(properties) {
                   </div>
                 </div>
               </td>
-              <td class="hidden lg:table-cell text-xs text-base-content/70 max-w-[220px]">
+              <td class="hidden lg:table-cell text-xs text-base-content/70 max-w-[220px] cursor-pointer" data-role="open">
                 <span class="block truncate">${escHtml(p.address)}</span>
               </td>
-              <td class="text-xs">${escHtml(brandLabel(p.brand))}</td>
-              <td class="hidden sm:table-cell text-xs">${escHtml(completed)}</td>
-              <td class="text-xs">${escHtml(age)}</td>
-              <td class="hidden sm:table-cell text-xs">${escHtml(p.person_in_charge || '—')}</td>
+              <td class="text-xs cursor-pointer" data-role="open">${escHtml(getBrandLabel(p.brand))}</td>
+              <td class="hidden sm:table-cell text-xs cursor-pointer" data-role="open">${escHtml(completed)}</td>
+              <td class="text-xs cursor-pointer" data-role="open">${escHtml(age)}</td>
+              <td class="hidden sm:table-cell text-xs cursor-pointer" data-role="open">${escHtml(p.phone_number || '—')}</td>
             </tr>`;
         }).join('')}
       </tbody>
     </table>
   `;
 
-  // 行クリック → 詳細パネルを開く
-  container.querySelectorAll('[data-list-id]').forEach((tr) => {
-    tr.addEventListener('click', () => {
+  // セルクリックで詳細パネル
+  container.querySelectorAll('td[data-role="open"]').forEach((td) => {
+    td.addEventListener('click', () => {
+      const tr   = td.closest('tr');
       const prop = properties.find((p) => p.id === tr.getAttribute('data-list-id'));
       if (prop) showDetailPanel(prop);
     });
   });
+
+  // 行チェックボックス
+  container.querySelectorAll('.list-row-check').forEach((cb) => {
+    cb.addEventListener('change', (e) => {
+      const id = e.target.dataset.id;
+      if (e.target.checked) _selectedIds.add(id);
+      else                  _selectedIds.delete(id);
+      _refreshSelectionUI(properties);
+    });
+  });
+
+  // 全選択チェックボックス
+  document.getElementById('list-select-all')?.addEventListener('change', (e) => {
+    if (e.target.checked) properties.forEach((p) => _selectedIds.add(p.id));
+    else                  properties.forEach((p) => _selectedIds.delete(p.id));
+    renderListView(properties); // 再描画してチェック状態を反映
+  });
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+/**
+ * 選択状態に応じてツールバーのUI（件数・ボタン活性）だけ更新する
+ */
+function _refreshSelectionUI(visibleProperties) {
+  const countEl = document.getElementById('list-selected-count');
+  if (countEl) countEl.textContent = String(_selectedIds.size);
+  const btn = document.getElementById('btn-delete-selected');
+  if (btn) btn.disabled = _selectedIds.size === 0;
+  const all = document.getElementById('list-select-all');
+  if (all) {
+    all.checked = visibleProperties.length > 0 && visibleProperties.every((p) => _selectedIds.has(p.id));
+  }
+}
+
+/**
+ * 現在選択されている物件ID一覧を返す（一括削除用）
+ */
+export function getSelectedIds() {
+  return [..._selectedIds];
+}
+
+/**
+ * 現在のフィルタ結果（全物件）IDを返す（絞り込み結果全削除用）
+ */
+export function getFilteredIds() {
+  return _lastFiltered.map((p) => p.id);
+}
+
+/**
+ * 複数IDをローカル状態から除去してリストを再描画する
+ */
+export function removeProperties(ids) {
+  const set = new Set(ids);
+  allProperties = allProperties.filter((p) => !set.has(p.id));
+  ids.forEach((id) => _selectedIds.delete(id));
+  applyFilterAndRender();
 }
 
 /**
@@ -180,6 +260,13 @@ export function renderPropertyList(properties) {
 }
 
 /**
+ * 現在保持している全物件を返す（重複チェック用）
+ */
+export function getAllProperties() {
+  return allProperties;
+}
+
+/**
  * 物件を1件追加してリストを再描画する
  */
 export function addProperty(property) {
@@ -196,7 +283,7 @@ export function updateProperty(updated) {
     // 変更されたフィールドだけ記録
     const LABELS = {
       property_name: '物件名', address: '住所', brand: '物件種別',
-      completed_at: '施工完了', person_in_charge: '担当者',
+      completed_at: '施工完了', phone_number: '電話番号',
       notes: '備考',
     };
     const changes = Object.entries(LABELS)
@@ -232,7 +319,7 @@ export function applyFilterAndRender() {
   const brandVal     = document.getElementById('filter-brand')?.value      || '';
   const ageMinVal    = document.getElementById('filter-age-min')?.value    || '';
   const ageMaxVal    = document.getElementById('filter-age-max')?.value    || '';
-  const personVal    = document.getElementById('filter-person')?.value     || '';
+  const phoneVal     = (document.getElementById('filter-phone')?.value || '').replace(/[\s\-‐－ー]/g, '');
   const developedVal = document.getElementById('filter-developed')?.checked || false;
 
   const filtered = allProperties.filter((p) => {
@@ -241,9 +328,12 @@ export function applyFilterAndRender() {
       const address = _normalize(p.address);
       if (!name.includes(searchVal) && !address.includes(searchVal)) return false;
     }
-    if (brandVal     && p.brand            !== brandVal)    return false;
-    if (personVal    && p.person_in_charge !== personVal)   return false;
-    if (developedVal && !p.is_developed)                   return false;
+    if (brandVal     && p.brand !== brandVal)                          return false;
+    if (phoneVal) {
+      const phone = (p.phone_number || '').replace(/[\s\-‐－ー]/g, '');
+      if (!phone.includes(phoneVal)) return false;
+    }
+    if (developedVal && !p.is_developed)                              return false;
     if (ageMinVal !== '' || ageMaxVal !== '') {
       const age = calcAgeYears(p.completed_at);
       if (ageMinVal !== '' && age < Number(ageMinVal))     return false;
@@ -254,9 +344,6 @@ export function applyFilterAndRender() {
 
   // エクスポート用に最新結果を保持
   _lastFiltered = filtered;
-
-  // 担当者セレクト更新
-  updatePersonSelect(allProperties);
 
   // ビューに応じて描画を切り替える
   if (_currentView === 'list') {
@@ -305,10 +392,10 @@ export function applyFilterAndRender() {
  * 物件カードHTML生成
  */
 function createPropertyCard(p) {
-  const color = getMarkerColor(p.completed_at);
-  const age = p.completed_at ? `築${Math.floor(calcAgeYears(p.completed_at))}年` : '不明';
-  const brandLabel = { fukuta_house: 'フクタハウス', urban_suite: 'アーバンスイート', other: 'その他' }[p.brand] || '';
-  const brandBadgeClass = p.brand === 'urban_suite' ? 'badge-urban-suite' : 'badge-primary badge-outline';
+  const color      = getMarkerColor(p.completed_at);
+  const age        = p.completed_at ? `築${Math.floor(calcAgeYears(p.completed_at))}年` : '不明';
+  const brandLabel = getBrandLabel(p.brand);
+  const brandColor = getBrandColor(p.brand);
 
   return `
     <div
@@ -325,30 +412,14 @@ function createPropertyCard(p) {
             </div>
             <p class="text-xs text-base-content/60 truncate">${escHtml(p.address)}</p>
             <div class="flex gap-1 mt-1 flex-wrap">
-              ${brandLabel ? `<span class="badge badge-sm ${brandBadgeClass}">${escHtml(brandLabel)}</span>` : ''}
+              ${brandLabel ? `<span class="badge badge-sm border-0 text-white" style="background:${brandColor}">${escHtml(brandLabel)}</span>` : ''}
               <span class="badge badge-sm badge-ghost">${age}</span>
-              ${p.person_in_charge ? `<span class="badge badge-sm badge-ghost">${escHtml(p.person_in_charge)}</span>` : ''}
+              ${p.phone_number ? `<span class="badge badge-sm badge-ghost">${escHtml(p.phone_number)}</span>` : ''}
             </div>
           </div>
         </div>
       </div>
     </div>`;
-}
-
-/**
- * 担当者セレクトボックスを更新する
- */
-function updatePersonSelect(properties) {
-  const select = document.getElementById('filter-person');
-  if (!select) return;
-
-  const persons = [...new Set(properties.map((p) => p.person_in_charge).filter(Boolean))];
-  const currentVal = select.value;
-
-  select.innerHTML = '<option value="">すべて</option>' +
-    persons.map((name) => `<option value="${escHtml(name)}">${escHtml(name)}</option>`).join('');
-
-  if (currentVal) select.value = currentVal;
 }
 
 /**
