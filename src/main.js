@@ -13,7 +13,7 @@ import {
   deletePropertyDb,
 } from './supabase.js';
 import { FIELD_DEFS, analyzeCsv, parseCsvWithMapping, importProperties } from './import.js';
-import { propertyDupKey, addressDupKey } from './utils.js';
+import { propertyDupKey, addressDupKey, parseFlexibleDate, formatDateJp } from './utils.js';
 
 // ===== デモ用サンプルデータ（Supabase 未接続時のみ使用）=====
 const DEMO_PROPERTIES = [
@@ -95,6 +95,13 @@ const DEMO_PROPERTIES = [
 
   setupAddForm();
   setupImportForm();
+  // 施工完了年月の入力プレビュー（input時に再評価）
+  document.getElementById('input-completed-at')?.addEventListener('input', updateCompletedAtPreview);
+  // 物件追加ボタンを押したときもプレビューをリセット
+  document.getElementById('btn-add')?.addEventListener('click', () => {
+    const preview = document.getElementById('completed-at-preview');
+    if (preview) preview.textContent = '';
+  });
 })();
 
 /**
@@ -140,6 +147,16 @@ function setupAddForm() {
     const isEditing = Boolean(data.property_id);
     const submitBtn = form.querySelector('[type="submit"]');
 
+    // 施工完了年月を柔軟パース。入力されていて解釈不能ならエラー
+    let completedAt = null;
+    if (data.completed_at) {
+      completedAt = parseFlexibleDate(data.completed_at);
+      if (!completedAt) {
+        alert('施工完了年月の形式を解釈できませんでした。\n例: 2020/10、2020年10月、1995/10/15、令和2年10月');
+        return;
+      }
+    }
+
     // 新規追加時のみ重複チェック（編集時は自分自身に当たるためスキップ）
     if (!isEditing) {
       const dup = findDuplicate({ property_name: data.property_name, address: data.address });
@@ -159,7 +176,7 @@ function setupAddForm() {
         address:          data.address,
         brand:            data.brand            || null,
         is_developed:     data.is_developed === 'on',
-        completed_at:     data.completed_at ? data.completed_at + '-01' : null,
+        completed_at:     completedAt,
         person_in_charge: data.person_in_charge || null,
         notes:            data.notes            || null,
         latitude:         lat,
@@ -206,13 +223,35 @@ function openEditForm(property) {
   form.querySelector('[name="address"]').value          = property.address          || '';
   form.querySelector('[name="brand"]').value            = property.brand            || '';
   form.querySelector('[name="is_developed"]').checked   = property.is_developed     || false;
-  form.querySelector('[name="completed_at"]').value     = property.completed_at?.substring(0, 7) || '';
+  form.querySelector('[name="completed_at"]').value     = property.completed_at?.substring(0, 7).replace('-', '/') || '';
   form.querySelector('[name="person_in_charge"]').value = property.person_in_charge || '';
   form.querySelector('[name="notes"]').value            = property.notes            || '';
+  updateCompletedAtPreview();
 
   document.getElementById('modal-add-title').textContent  = '物件を編集';
   document.getElementById('modal-add-submit').textContent = '更新する';
   document.getElementById('modal-add').showModal();
+}
+
+/**
+ * 施工完了年月の入力欄の下にパース結果プレビューを表示する
+ */
+function updateCompletedAtPreview() {
+  const input   = document.getElementById('input-completed-at');
+  const preview = document.getElementById('completed-at-preview');
+  if (!input || !preview) return;
+  const raw = input.value.trim();
+  if (!raw) { preview.textContent = ''; preview.classList.remove('text-error'); return; }
+  const parsed = parseFlexibleDate(raw);
+  if (parsed) {
+    preview.textContent = `→ ${formatDateJp(parsed)} として登録`;
+    preview.classList.remove('text-error');
+    preview.classList.add('text-success');
+  } else {
+    preview.textContent = '解釈できませんでした。例: 2020/10、2020年10月、令和2年10月';
+    preview.classList.remove('text-success');
+    preview.classList.add('text-error');
+  }
 }
 
 /**

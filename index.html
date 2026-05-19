@@ -291,11 +291,17 @@
             <option value="other">その他</option>
           </select>
         </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div class="form-control">
-            <label class="label"><span class="label-text">施工完了年月</span></label>
-            <input type="month" name="completed_at" class="input input-bordered input-sm" />
-          </div>
+        <div class="form-control">
+          <label class="label"><span class="label-text">施工完了年月</span></label>
+          <input
+            type="text"
+            name="completed_at"
+            id="input-completed-at"
+            class="input input-bordered input-sm"
+            placeholder="例: 2020/10、2020年10月、1995/10/15、令和2年10月"
+            autocomplete="off"
+          />
+          <p id="completed-at-preview" class="text-xs text-base-content/50 mt-1 min-h-[1em]"></p>
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div class="form-control">

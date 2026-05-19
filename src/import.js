@@ -2,7 +2,7 @@
  * import.js — CSVインポート処理（列マッピング・ジオコーディング対応）
  */
 import { insertProperty, fetchPropertyKeys, isSupabaseConfigured } from './supabase.js';
-import { propertyDupKey, addressDupKey } from './utils.js';
+import { propertyDupKey, addressDupKey, parseFlexibleDate } from './utils.js';
 
 /**
  * システム項目の定義
@@ -216,16 +216,7 @@ function normalizeBrand(val) {
 }
 
 function normalizeDate(val) {
-  if (!val) return null;
-  // YYYY-MM または YYYY/MM → YYYY-MM-01
-  const m1 = val.match(/^(\d{4})[-\/](\d{1,2})$/);
-  if (m1) return `${m1[1]}-${m1[2].padStart(2, '0')}-01`;
-  // YYYY年MM月
-  const m2 = val.match(/^(\d{4})年(\d{1,2})月?$/);
-  if (m2) return `${m2[1]}-${m2[2].padStart(2, '0')}-01`;
-  // YYYY-MM-DD（そのまま）
-  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
-  return null;
+  return parseFlexibleDate(val);
 }
 
 function normalizeBool(val) {
