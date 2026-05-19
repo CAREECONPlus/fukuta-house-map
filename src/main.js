@@ -13,7 +13,7 @@ import {
   deletePropertyDb,
   deletePropertiesDb,
 } from './supabase.js';
-import { FIELD_DEFS, analyzeCsv, parseCsvWithMapping, importProperties } from './import.js';
+import { FIELD_DEFS, MAINT_FIELD_DEFS, analyzeCsv, parseCsvWithMapping, parseMaintenanceCsvWithMapping, importProperties, importMaintenance } from './import.js';
 import { propertyDupKey, addressDupKey, parseFlexibleDate, formatDateJp } from './utils.js';
 import { openPinAdjustModal } from './pinAdjust.js';
 
@@ -347,7 +347,7 @@ function updateCompletedAtPreview() {
 }
 
 /**
- * CSVインポートモーダルの処理（列マッピング対応）
+ * CSVインポートモーダルの処理（物件 / 点検履歴の2モード対応）
  */
 function setupImportForm() {
   const inputCsv    = document.getElementById('input-csv');
@@ -362,13 +362,41 @@ function setupImportForm() {
   const progressBar = document.getElementById('progress-bar');
   const progressTxt = document.getElementById('progress-text');
   const resultEl    = document.getElementById('import-result');
+  const modeHint    = document.getElementById('import-mode-hint');
+  const sampleLink  = document.getElementById('link-sample-csv');
 
   let _csvText = '';
+  let _mode    = 'properties'; // 'properties' | 'maintenance'
+
+  const escHtml = (s) => String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+
+  function _applyMode(mode) {
+    _mode = mode;
+    const tabs = document.querySelectorAll('#modal-import [role="tablist"] a');
+    tabs.forEach((a) => {
+      a.classList.toggle('tab-active', a.dataset.mode === mode);
+    });
+    if (mode === 'maintenance') {
+      modeHint.textContent = '既存物件に紐づく点検履歴をまとめて取り込みます。「物件名」「住所」で既存物件を特定します。';
+      sampleLink.setAttribute('href', 'data/import/sample_maintenance.csv');
+    } else {
+      modeHint.textContent = '列名はどんな形式でも読み込めます。ファイルを選ぶと各列の対応先を設定できます。';
+      sampleLink.setAttribute('href', 'data/import/sample.csv');
+    }
+    _reset();
+  }
 
   // モーダルを開くたびにリセット
   document.getElementById('btn-import')?.addEventListener('click', () => {
-    _reset();
+    _applyMode('properties');
     document.getElementById('modal-import').showModal();
+  });
+
+  // タブ切替
+  document.querySelectorAll('#modal-import [role="tablist"] a').forEach((a) => {
+    a.addEventListener('click', () => _applyMode(a.dataset.mode));
   });
 
   function _reset() {
@@ -407,7 +435,7 @@ function setupImportForm() {
     } catch {
       _csvText = new TextDecoder('shift-jis').decode(_buf);
     }
-    const { headers, autoMapping, rowCount, error } = analyzeCsv(_csvText);
+    const { headers, autoMapping, rowCount, error } = analyzeCsv(_csvText, _mode);
 
     if (error) {
       errorList.innerHTML = `<li>${error}</li>`;
@@ -417,9 +445,9 @@ function setupImportForm() {
 
     // 列マッピングUI構築
     const noneOption = '<option value="">（使わない）</option>';
-    const colOptions = headers.map((h) => `<option value="${h}">${h}</option>`).join('');
+    const fieldDefs = _mode === 'maintenance' ? MAINT_FIELD_DEFS : FIELD_DEFS;
 
-    mappingForm.innerHTML = FIELD_DEFS.map(({ key, label, required, hint }) => {
+    mappingForm.innerHTML = fieldDefs.map(({ key, label, required, hint }) => {
       const selected = autoMapping[key] || '';
       const options  = headers.map((h) =>
         `<option value="${h}" ${h === selected ? 'selected' : ''}>${h}</option>`
@@ -456,26 +484,39 @@ function setupImportForm() {
       if (sel.value) mapping[sel.dataset.field] = sel.value;
     });
 
-    if (!mapping.property_name || !mapping.address) {
-      errorList.innerHTML = '<li>「物件名」と「住所」は必ず対応列を選んでください</li>';
+    // 必須列チェック
+    const fieldDefs = _mode === 'maintenance' ? MAINT_FIELD_DEFS : FIELD_DEFS;
+    const missingRequired = fieldDefs.filter((f) => f.required && !mapping[f.key]);
+    if (missingRequired.length > 0) {
+      errorList.innerHTML = `<li>必須項目に対応列を選んでください: ${missingRequired.map((f) => f.label).join(', ')}</li>`;
       errorsEl.classList.remove('hidden');
       return;
     }
     errorsEl.classList.add('hidden');
-
-    // パース
-    const { data, errors } = parseCsvWithMapping(_csvText, mapping);
-    if (errors.length > 0) {
-      errorList.innerHTML = errors.slice(0, 10).map((e) => `<li>${e}</li>`).join('');
-      errorsEl.classList.remove('hidden');
-    }
-    if (data.length === 0) return;
 
     btnImport.disabled  = true;
     inputCsv.disabled   = true;
     btnCancel.disabled  = true;
     progressEl.classList.remove('hidden');
     resultEl.classList.add('hidden');
+
+    if (_mode === 'maintenance') {
+      await _runMaintenanceImport(mapping);
+    } else {
+      await _runPropertiesImport(mapping);
+    }
+
+    btnCancel.disabled    = false;
+    btnCancel.textContent = '閉じる';
+  });
+
+  async function _runPropertiesImport(mapping) {
+    const { data, errors } = parseCsvWithMapping(_csvText, mapping);
+    if (errors.length > 0) {
+      errorList.innerHTML = errors.slice(0, 10).map((e) => `<li>${e}</li>`).join('');
+      errorsEl.classList.remove('hidden');
+    }
+    if (data.length === 0) return;
 
     const { success, failed, skipped, addressDuplicates } = await importProperties(
       data,
@@ -486,10 +527,6 @@ function setupImportForm() {
     );
 
     progressTxt.textContent = '完了しました';
-
-    const escHtml = (s) => String(s ?? '')
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 
     const addrDupHtml = addressDuplicates.length > 0 ? `
       <details class="mt-3 text-left">
@@ -513,11 +550,57 @@ function setupImportForm() {
       (skipped > 0 ? `　<span class="text-warning">⏭ 完全重複スキップ ${skipped} 件</span>` : '') +
       addrDupHtml;
     resultEl.classList.remove('hidden');
-    btnCancel.disabled    = false;
-    btnCancel.textContent = '閉じる';
 
     if (success > 0) await loadFromSupabase();
-  });
+  }
+
+  async function _runMaintenanceImport(mapping) {
+    const { data, errors } = parseMaintenanceCsvWithMapping(_csvText, mapping);
+    if (errors.length > 0) {
+      errorList.innerHTML = errors.slice(0, 10).map((e) => `<li>${e}</li>`).join('');
+      errorsEl.classList.remove('hidden');
+    }
+    if (data.length === 0) return;
+
+    let result;
+    try {
+      result = await importMaintenance(
+        data,
+        ({ current, total, status }) => {
+          progressBar.value = Math.round((current / total) * 100);
+          progressTxt.textContent = `${current} / ${total} 件　${status}`;
+        }
+      );
+    } catch (err) {
+      progressTxt.textContent = '失敗しました';
+      resultEl.innerHTML = `<span class="text-error">❌ ${escHtml(err.message)}</span>`;
+      resultEl.classList.remove('hidden');
+      return;
+    }
+
+    const { success, failed, notFound } = result;
+    progressTxt.textContent = '完了しました';
+
+    const notFoundHtml = notFound.length > 0 ? `
+      <details class="mt-3 text-left" open>
+        <summary class="cursor-pointer text-xs text-warning font-semibold">
+          ⚠️ 物件が見つからず未登録 ${notFound.length} 件（要確認）
+        </summary>
+        <ul class="mt-2 text-xs text-base-content/70 list-disc list-inside max-h-40 overflow-y-auto space-y-0.5">
+          ${notFound.map((n) => `
+            <li>
+              ${n.row}行目 「${escHtml(n.property_name)}」
+              <span class="text-base-content/40">— ${escHtml(n.address)}</span>
+            </li>`).join('')}
+        </ul>
+      </details>` : '';
+
+    resultEl.innerHTML =
+      `<span class="text-success">✅ 成功 ${success} 件</span>` +
+      (failed > 0 ? `　<span class="text-error">❌ 失敗 ${failed} 件</span>` : '') +
+      notFoundHtml;
+    resultEl.classList.remove('hidden');
+  }
 }
 
 /**
