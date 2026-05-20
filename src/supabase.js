@@ -142,6 +142,37 @@ export async function deletePropertyTypeDb(id) {
   });
 }
 
+// ===== categories =====
+
+export async function fetchCategories() {
+  return _get('categories', {
+    select:    '*',
+    is_active: 'is.true',
+    order:     'sort_order.asc,label.asc',
+  });
+}
+
+export async function insertCategory(data) {
+  const rows = await _post('categories', data);
+  return Array.isArray(rows) ? rows[0] : rows;
+}
+
+export async function updateCategoryDb(id, data) {
+  const rows = await _patch('categories', { id: `eq.${id}` }, {
+    ...data,
+    updated_at: new Date().toISOString(),
+  });
+  return Array.isArray(rows) ? rows[0] : rows;
+}
+
+export async function deleteCategoryDb(id) {
+  // 物理削除ではなく論理削除（is_active=false）
+  await _patch('categories', { id: `eq.${id}` }, {
+    is_active:  false,
+    updated_at: new Date().toISOString(),
+  });
+}
+
 // ===== maintenance =====
 
 export async function fetchMaintenance(propertyId) {

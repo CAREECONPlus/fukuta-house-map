@@ -40,6 +40,9 @@
           <i data-lucide="list" class="w-4 h-4"></i>
         </button>
       </div>
+      <button id="btn-manage-categories" class="btn btn-sm btn-ghost btn-square" title="カテゴリを管理">
+        <i data-lucide="layers" class="w-4 h-4"></i>
+      </button>
       <button id="btn-import" class="btn btn-sm btn-outline gap-1" title="CSVインポート">
         <i data-lucide="upload" class="w-4 h-4"></i>
         <span class="hidden sm:inline">インポート</span>
@@ -425,6 +428,40 @@
         <div class="form-control">
           <label class="label py-0"><span class="label-text text-xs">色</span></label>
           <input type="color" name="color" value="#6b7280" class="input input-bordered input-sm w-16 px-1" />
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm gap-1">
+          <i data-lucide="plus" class="w-3 h-3"></i>追加
+        </button>
+      </form>
+
+      <div class="modal-action">
+        <form method="dialog"><button class="btn btn-ghost btn-sm">閉じる</button></form>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
+  <!-- ===== モーダル：カテゴリの管理 ===== -->
+  <dialog id="modal-categories" class="modal">
+    <div class="modal-box w-11/12 max-w-md">
+      <h3 class="font-bold text-lg mb-2">カテゴリの管理</h3>
+      <p class="text-xs text-base-content/60 mb-3">
+        住宅・電柱・調整池・道路 は既定カテゴリです（削除不可）。新規カテゴリを追加するとマップ上で別の対象として扱えます。
+      </p>
+
+      <div id="categories-list" class="space-y-2 max-h-80 overflow-y-auto pr-1">
+        <!-- JS が描画 -->
+      </div>
+
+      <div class="divider text-xs my-3">新しいカテゴリを追加</div>
+      <form id="form-add-category" class="flex flex-wrap items-end gap-2">
+        <div class="form-control flex-1 min-w-[8rem]">
+          <label class="label py-0"><span class="label-text text-xs">ラベル</span></label>
+          <input type="text" name="label" class="input input-bordered input-sm" required placeholder="例: 公園" />
+        </div>
+        <div class="form-control">
+          <label class="label py-0"><span class="label-text text-xs">色</span></label>
+          <input type="color" name="color" value="#ef4444" class="input input-bordered input-sm w-16 px-1" />
         </div>
         <button type="submit" class="btn btn-primary btn-sm gap-1">
           <i data-lucide="plus" class="w-3 h-3"></i>追加

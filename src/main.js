@@ -24,6 +24,14 @@ import {
   updatePropertyType,
   removePropertyType,
 } from './propertyTypes.js';
+import {
+  loadCategories,
+  getCategories,
+  onCategoriesChanged,
+  addCategory,
+  updateCategory,
+  removeCategory,
+} from './categories.js';
 
 // ===== デモ用サンプルデータ（Supabase 未接続時のみ使用）=====
 const DEMO_PROPERTIES = [
@@ -94,6 +102,13 @@ const DEMO_PROPERTIES = [
     applyFilterAndRender(); // ラベル変更があるかもしれないので再描画
   });
   _setupTypesManager();
+
+  // カテゴリマスタの読み込みと管理モーダル配線（PR-1: マスタのみ。フォーム/マップへの反映は後続PR）
+  await loadCategories();
+  onCategoriesChanged(() => {
+    applyFilterAndRender();
+  });
+  _setupCategoriesManager();
 
   setupUI(applyFilterAndRender, openEditForm, handleDelete, addMaintenance);
 
@@ -769,6 +784,103 @@ function _renderTypesList() {
       try {
         await removePropertyType(id);
         _renderTypesList();
+      } catch (err) {
+        alert('削除に失敗しました: ' + err.message);
+      }
+    });
+  });
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+/**
+ * カテゴリマスタ管理モーダルの配線
+ * ビルトイン4種（住宅・電柱・調整池・道路）はラベルと色のみ編集可、削除不可。
+ * ユーザー追加カテゴリは編集も論理削除も可能。
+ */
+function _setupCategoriesManager() {
+  document.getElementById('btn-manage-categories')?.addEventListener('click', () => {
+    _renderCategoriesList();
+    document.getElementById('modal-categories').showModal();
+  });
+
+  document.getElementById('form-add-category')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd    = new FormData(e.target);
+    const label = (fd.get('label') || '').toString().trim();
+    const color = (fd.get('color') || '#ef4444').toString();
+    if (!label) return;
+    try {
+      await addCategory({ label, color });
+      e.target.reset();
+      e.target.querySelector('[name="color"]').value = '#ef4444';
+      _renderCategoriesList();
+    } catch (err) {
+      alert('追加に失敗しました: ' + err.message);
+    }
+  });
+}
+
+function _renderCategoriesList() {
+  const list = document.getElementById('categories-list');
+  if (!list) return;
+  const categories = getCategories();
+  if (categories.length === 0) {
+    list.innerHTML = '<p class="text-xs text-base-content/40 py-3 text-center">カテゴリがありません</p>';
+    return;
+  }
+  list.innerHTML = categories.map((c) => {
+    const builtinBadge = c.is_builtin
+      ? '<span class="badge badge-ghost badge-xs">既定</span>'
+      : '';
+    const deleteBtn = c.is_builtin
+      ? ''
+      : `<button type="button" data-action="delete" class="btn btn-xs btn-ghost text-error" title="非表示にする">
+           <i data-lucide="trash-2" class="w-3 h-3"></i>
+         </button>`;
+    return `
+      <div class="flex items-center gap-2" data-category-id="${escAttr(c.id)}">
+        <input type="color" data-field="color" value="${escAttr(c.color || '#ef4444')}"
+               class="input input-bordered input-xs w-10 h-8 p-0.5" />
+        <input type="text" data-field="label" value="${escAttr(c.label)}"
+               class="input input-bordered input-sm flex-1" />
+        ${builtinBadge}
+        <button type="button" data-action="save" class="btn btn-xs btn-primary gap-1">
+          <i data-lucide="check" class="w-3 h-3"></i>保存
+        </button>
+        ${deleteBtn}
+      </div>
+    `;
+  }).join('');
+
+  list.querySelectorAll('[data-category-id]').forEach((row) => {
+    const id        = row.dataset.categoryId;
+    const labelIn   = row.querySelector('[data-field="label"]');
+    const colorIn   = row.querySelector('[data-field="color"]');
+    const saveBtn   = row.querySelector('[data-action="save"]');
+    const deleteBtn = row.querySelector('[data-action="delete"]');
+
+    saveBtn.addEventListener('click', async () => {
+      const label = labelIn.value.trim();
+      const color = colorIn.value;
+      if (!label) { alert('ラベルが空です'); return; }
+      saveBtn.disabled = true;
+      try {
+        await updateCategory(id, { label, color });
+        saveBtn.classList.add('btn-success');
+        setTimeout(() => saveBtn.classList.remove('btn-success'), 1000);
+      } catch (err) {
+        alert('保存に失敗しました: ' + err.message);
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+
+    deleteBtn?.addEventListener('click', async () => {
+      if (!window.confirm(`「${labelIn.value}」を非表示にしますか？\n（既存物件は表示されますが、新規選択肢から外れます）`)) return;
+      try {
+        await removeCategory(id);
+        _renderCategoriesList();
       } catch (err) {
         alert('削除に失敗しました: ' + err.message);
       }
