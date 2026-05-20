@@ -6,6 +6,27 @@ import { getMaintenanceByProperty, deleteMaintenance } from './maintenance.js';
 import { openGoogleMapsNav } from './routes.js';
 import { getChangeLog } from './properties.js?v=7';
 import { getLabel as getBrandLabel } from './propertyTypes.js';
+import { getCategoryLabel, getCategoryColor } from './categories.js';
+
+/**
+ * カテゴリ別 extra フィールドの表示定義
+ * order: 表示順、label: 表示名、suffix: 単位（任意）
+ */
+const EXTRA_FIELD_DISPLAY = {
+  utility_pole: [
+    { key: 'pole_number', label: '電柱番号' },
+    { key: 'pole_type',   label: '種類' },
+  ],
+  retention_pond: [
+    { key: 'capacity_m3', label: '容量', suffix: ' m³' },
+    { key: 'area_m2',     label: '面積', suffix: ' m²' },
+    { key: 'manager',     label: '管理者' },
+  ],
+  road: [
+    { key: 'road_name', label: '道路名' },
+    { key: 'width_m',   label: '幅員', suffix: ' m' },
+  ],
+};
 
 let _currentProperty = null;
 let _onEdit              = null;
@@ -188,24 +209,47 @@ function _startNavigation(property) {
 
 function _renderDetailContent(property) {
   const content = document.getElementById('detail-content');
-  const age = calcAge(property.completed_at);
-  const completedLabel = property.completed_at
+  const category      = property.category || 'building';
+  const isBuilding    = category === 'building';
+  const categoryLabel = getCategoryLabel(category);
+  const categoryColor = getCategoryColor(category);
+
+  // 住宅専用フィールド
+  const age            = isBuilding ? calcAge(property.completed_at) : '';
+  const completedLabel = isBuilding && property.completed_at
     ? property.completed_at.substring(0, 7).replace('-', '年') + '月'
-    : '不明';
-  const brandLabel = getBrandLabel(property.brand);
+    : '';
+  const brandLabel = isBuilding ? getBrandLabel(property.brand) : '';
+
+  // カテゴリ固有 extra フィールド
+  const extra = property.extra || {};
+  const extraRows = (EXTRA_FIELD_DISPLAY[category] || [])
+    .map((d) => {
+      const v = extra[d.key];
+      if (v === undefined || v === null || v === '') return '';
+      return row(d.label, `${v}${d.suffix || ''}`);
+    })
+    .join('');
 
   content.innerHTML = `
     <dl class="space-y-2 text-sm">
+      <div class="flex gap-2">
+        <dt class="text-base-content/50 w-20 flex-shrink-0">カテゴリ</dt>
+        <dd class="font-medium flex-1">
+          <span class="badge badge-sm border-0 text-white" style="background:${escHtml(categoryColor)}">${escHtml(categoryLabel)}</span>
+        </dd>
+      </div>
       ${row('住所',     property.address)}
-      ${row('物件種別', brandLabel)}
-      ${property.is_developed ? `
+      ${isBuilding ? row('物件種別', brandLabel) : ''}
+      ${isBuilding && property.is_developed ? `
         <div class="flex gap-2">
           <dt class="text-base-content/50 w-20 flex-shrink-0"></dt>
           <dd class="font-medium flex-1"><span class="badge badge-sm badge-accent">自社開発物件</span></dd>
         </div>` : ''}
-      ${row('施工完了', completedLabel)}
-      ${row('経過年数', age)}
-      ${phoneRow(property.phone_number)}
+      ${isBuilding ? row('施工完了', completedLabel) : ''}
+      ${isBuilding ? row('経過年数', age) : ''}
+      ${isBuilding ? phoneRow(property.phone_number) : ''}
+      ${extraRows}
       ${property.notes ? row('備考', property.notes) : ''}
     </dl>
 
@@ -323,19 +367,35 @@ async function openDetailModal(property) {
 
   title.textContent = property.property_name;
 
-  const age = calcAge(property.completed_at);
-  const completedLabel = property.completed_at
-    ? property.completed_at.replace('-', '年') + '月' : '不明';
-  const brandLabel = getBrandLabel(property.brand);
+  const category    = property.category || 'building';
+  const isBuilding  = category === 'building';
+  const categoryLabel = getCategoryLabel(category);
+
+  const age = isBuilding ? calcAge(property.completed_at) : '';
+  const completedLabel = isBuilding && property.completed_at
+    ? property.completed_at.replace('-', '年') + '月' : '';
+  const brandLabel = isBuilding ? getBrandLabel(property.brand) : '';
+
+  // カテゴリ固有 extra フィールド
+  const extra = property.extra || {};
+  const extraFields = (EXTRA_FIELD_DISPLAY[category] || [])
+    .map((d) => {
+      const v = extra[d.key];
+      if (v === undefined || v === null || v === '') return null;
+      return [d.label, `${v}${d.suffix || ''}`];
+    })
+    .filter((x) => x);
 
   const fields = [
+    ['カテゴリ', categoryLabel],
     ['住所',     property.address],
-    ['物件種別', brandLabel],
-    ['施工完了', completedLabel],
-    ['経過年数', age],
-    ['電話番号', property.phone_number],
+    isBuilding && ['物件種別', brandLabel],
+    isBuilding && ['施工完了', completedLabel],
+    isBuilding && ['経過年数', age],
+    isBuilding && ['電話番号', property.phone_number],
+    ...extraFields,
     ['備考',     property.notes],
-  ].filter(([, v]) => v);
+  ].filter((x) => x && x[1]);
 
   // 点検履歴（非同期取得）
   let records = [];

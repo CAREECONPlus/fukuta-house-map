@@ -27,11 +27,32 @@ import {
 import {
   loadCategories,
   getCategories,
+  getCategoryLabel,
+  getCategoryColor,
+  getCategoryIconKey,
   onCategoriesChanged,
   addCategory,
   updateCategory,
   removeCategory,
 } from './categories.js';
+
+/**
+ * カテゴリごとの extra フィールド定義
+ * key は properties.extra (JSONB) のキー名
+ */
+const CATEGORY_EXTRA_FIELDS = {
+  utility_pole:   ['pole_number', 'pole_type'],
+  retention_pond: ['capacity_m3', 'area_m2', 'manager'],
+  road:           ['road_name', 'width_m'],
+};
+
+/** 物件名（property_name）の表示ラベルとプレースホルダー */
+const CATEGORY_NAME_HINTS = {
+  building:       { label: '物件名', placeholder: '例：○○邸' },
+  utility_pole:   { label: '名称',   placeholder: '例：A123号柱' },
+  retention_pond: { label: '名称',   placeholder: '例：○○調整池' },
+  road:           { label: '名称',   placeholder: '例：県道○○線' },
+};
 
 // ===== デモ用サンプルデータ（Supabase 未接続時のみ使用）=====
 const DEMO_PROPERTIES = [
@@ -103,14 +124,35 @@ const DEMO_PROPERTIES = [
   });
   _setupTypesManager();
 
-  // カテゴリマスタの読み込みと管理モーダル配線（PR-1: マスタのみ。フォーム/マップへの反映は後続PR）
+  // カテゴリマスタの読み込みと UI 配線
   await loadCategories();
+  _renderCategorySelects();
+  _renderCategoryFilter();
+  _renderCategoryLegend();
+  _setupCategoryFormHandler();
   onCategoriesChanged(() => {
+    _renderCategorySelects();
+    _renderCategoryFilter();
+    _renderCategoryLegend();
     applyFilterAndRender();
   });
   _setupCategoriesManager();
+  // フォーム内「カテゴリを管理」ボタンは管理モーダルを開く
+  document.getElementById('btn-manage-categories-form')?.addEventListener('click', () => {
+    document.getElementById('modal-categories').showModal();
+  });
 
   setupUI(applyFilterAndRender, openEditForm, handleDelete, addMaintenance);
+
+  // フィルタリセット時にカテゴリチェックも全選択に戻す
+  ['btn-reset-filter', 'btn-reset-filter-mobile'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('click', () => {
+      document.querySelectorAll('#filter-categories input[type="checkbox"]').forEach((cb) => {
+        cb.checked = true;
+      });
+      applyFilterAndRender();
+    });
+  });
 
   // ビュー切替トグル
   document.getElementById('btn-view-map')?.addEventListener('click', () => setViewMode('map'));
@@ -131,11 +173,16 @@ const DEMO_PROPERTIES = [
   setupImportForm();
   // 施工完了年月の入力プレビュー（input時に再評価）
   document.getElementById('input-completed-at')?.addEventListener('input', updateCompletedAtPreview);
-  // 物件追加ボタンを押したときもプレビュー/ピン状態をリセット
+  // 物件追加ボタンを押したときもプレビュー/ピン状態をリセット、カテゴリは住宅に戻す
   document.getElementById('btn-add')?.addEventListener('click', () => {
     const preview = document.getElementById('completed-at-preview');
     if (preview) preview.textContent = '';
     updatePinAdjustStatus(false);
+    const catSel = document.getElementById('form-category-select');
+    if (catSel) {
+      catSel.value = 'building';
+      _updateCategoryFieldVisibility('building');
+    }
   });
   // 住所を変更したら手動座標は破棄（次回送信時に再ジオコード）
   document.querySelector('#form-add-property [name="address"]')?.addEventListener('input', () => {
@@ -239,10 +286,12 @@ function setupAddForm() {
     const data      = Object.fromEntries(new FormData(form));
     const isEditing = Boolean(data.property_id);
     const submitBtn = form.querySelector('[type="submit"]');
+    const category  = data.category || 'building';
+    const isBuilding = category === 'building';
 
-    // 施工完了年月を柔軟パース。入力されていて解釈不能ならエラー
+    // 施工完了年月を柔軟パース。住宅のときのみ評価。
     let completedAt = null;
-    if (data.completed_at) {
+    if (isBuilding && data.completed_at) {
       completedAt = parseFlexibleDate(data.completed_at);
       if (!completedAt) {
         alert('施工完了年月の形式を解釈できませんでした。\n例: 2020/10、2020年10月、1995/10/15、令和2年10月');
@@ -257,6 +306,14 @@ function setupAddForm() {
         return; // ユーザーがキャンセル
       }
     }
+
+    // カテゴリ固有の extra フィールドを収集
+    const extra = {};
+    (CATEGORY_EXTRA_FIELDS[category] || []).forEach((key) => {
+      const el = form.querySelector(`[data-extra-key="${key}"]`);
+      const v  = el?.value;
+      if (v !== '' && v != null) extra[key] = v;
+    });
 
     submitBtn.disabled    = true;
     submitBtn.textContent = isEditing ? '更新中...' : '追加中...';
@@ -276,10 +333,12 @@ function setupAddForm() {
       const propertyData = {
         property_name: data.property_name,
         address:       data.address,
-        brand:         data.brand        || null,
-        is_developed:  data.is_developed === 'on',
+        category,
+        extra,
+        brand:         isBuilding ? (data.brand        || null) : null,
+        is_developed:  isBuilding ? (data.is_developed === 'on') : false,
         completed_at:  completedAt,
-        phone_number:  data.phone_number || null,
+        phone_number:  isBuilding ? (data.phone_number || null) : null,
         notes:         data.notes        || null,
         latitude:      lat,
         longitude:     lng,
@@ -320,6 +379,15 @@ function setupAddForm() {
  */
 function openEditForm(property) {
   const form = document.getElementById('form-add-property');
+  const category = property.category || 'building';
+
+  // カテゴリ select を先にセットしてフィールド表示を切り替える
+  const catSel = form.querySelector('[name="category"]');
+  if (catSel) {
+    catSel.value = category;
+    _updateCategoryFieldVisibility(category);
+  }
+
   form.querySelector('[name="property_id"]').value    = property.id;
   form.querySelector('[name="property_name"]').value  = property.property_name    || '';
   form.querySelector('[name="address"]').value        = property.address          || '';
@@ -330,6 +398,14 @@ function openEditForm(property) {
   form.querySelector('[name="notes"]').value          = property.notes        || '';
   form.querySelector('[name="latitude"]').value       = property.latitude ?? '';
   form.querySelector('[name="longitude"]').value      = property.longitude ?? '';
+
+  // カテゴリ固有 extra フィールドをプレ入力
+  const extra = property.extra || {};
+  (CATEGORY_EXTRA_FIELDS[category] || []).forEach((key) => {
+    const el = form.querySelector(`[data-extra-key="${key}"]`);
+    if (el) el.value = extra[key] ?? '';
+  });
+
   updateCompletedAtPreview();
   updatePinAdjustStatus(true);
 
@@ -791,6 +867,119 @@ function _renderTypesList() {
   });
 
   if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+/**
+ * 物件登録フォームのカテゴリ select の選択肢を再描画する
+ */
+function _renderCategorySelects() {
+  const sel = document.getElementById('form-category-select');
+  if (!sel) return;
+  const categories = getCategories();
+  const prev = sel.value;
+  sel.innerHTML = categories.map((c) =>
+    `<option value="${escAttr(c.code)}">${escAttr(c.label)}</option>`
+  ).join('');
+  // 既存選択を保持、なければ住宅をデフォルト
+  if (prev && categories.some((c) => c.code === prev)) {
+    sel.value = prev;
+  } else if (categories.some((c) => c.code === 'building')) {
+    sel.value = 'building';
+  }
+  _updateCategoryFieldVisibility(sel.value);
+}
+
+/**
+ * サイドバーのカテゴリチェックボックスフィルタを再描画する
+ */
+function _renderCategoryFilter() {
+  const box = document.getElementById('filter-categories');
+  if (!box) return;
+  const categories = getCategories();
+  // 既存のチェック状態を保持（再描画時に外さない）
+  const prevChecked = new Set(
+    Array.from(box.querySelectorAll('input[type="checkbox"]:checked')).map((cb) => cb.value)
+  );
+  const hasState = box.querySelector('input[type="checkbox"]') !== null;
+
+  box.innerHTML = categories.map((c) => {
+    const checked = !hasState || prevChecked.has(c.code) ? 'checked' : '';
+    return `
+      <label class="cursor-pointer inline-flex items-center gap-1.5">
+        <input type="checkbox" class="checkbox checkbox-xs" value="${escAttr(c.code)}" ${checked} />
+        <span class="inline-block w-2 h-2 rounded-full" style="background:${escAttr(c.color || '#6b7280')}"></span>
+        <span class="text-xs">${escAttr(c.label)}</span>
+      </label>`;
+  }).join('');
+
+  box.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+    cb.addEventListener('change', () => applyFilterAndRender());
+  });
+}
+
+/**
+ * サイドバーのカテゴリ凡例を再描画する
+ */
+function _renderCategoryLegend() {
+  const box = document.getElementById('legend-categories');
+  if (!box) return;
+  const categories = getCategories();
+  box.innerHTML = categories.map((c) => `
+    <div class="flex items-center gap-2">
+      <span class="inline-flex items-center justify-center w-4 h-4 rounded-full text-white"
+            style="background:${escAttr(c.color || '#6b7280')}">
+        <i data-lucide="${escAttr(c.icon_key || 'pin')}" class="w-2.5 h-2.5"></i>
+      </span>
+      <span>${escAttr(c.label)}</span>
+    </div>
+  `).join('');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+/**
+ * カテゴリ select の change を監視してフィールドの表示切替を行う
+ */
+function _setupCategoryFormHandler() {
+  const sel = document.getElementById('form-category-select');
+  if (!sel) return;
+  sel.addEventListener('change', () => _updateCategoryFieldVisibility(sel.value));
+}
+
+/**
+ * 選択中カテゴリに応じてフォーム内のフィールドグループの表示切替と
+ * 物件名のラベル/プレースホルダーを更新する
+ */
+function _updateCategoryFieldVisibility(category) {
+  const form = document.getElementById('form-add-property');
+  if (!form) return;
+
+  // 各カテゴリ専用フィールド群の表示切替
+  form.querySelectorAll('[data-category-only]').forEach((el) => {
+    const visible = el.dataset.categoryOnly === category;
+    el.classList.toggle('hidden', !visible);
+    // 非表示の入力は required を一時解除（form 送信エラー回避）
+    el.querySelectorAll('input,select,textarea').forEach((inp) => {
+      if (inp.dataset.requiredOriginal === undefined && inp.required) {
+        inp.dataset.requiredOriginal = '1';
+      }
+      if (!visible && inp.dataset.requiredOriginal === '1') {
+        inp.required = false;
+      } else if (visible && inp.dataset.requiredOriginal === '1') {
+        inp.required = true;
+      }
+    });
+  });
+
+  // 物件名ラベル / プレースホルダー
+  const hint = CATEGORY_NAME_HINTS[category] || { label: '名称', placeholder: '' };
+  const labelEl = form.querySelector('[data-name-label]');
+  const inputEl = form.querySelector('[data-name-input]');
+  if (labelEl) {
+    labelEl.innerHTML = `${escAttr(hint.label)} <span class="text-error">*</span>`;
+  }
+  if (inputEl) {
+    inputEl.placeholder = hint.placeholder;
+  }
 }
 
 /**

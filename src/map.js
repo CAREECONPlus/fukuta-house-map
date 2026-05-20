@@ -1,6 +1,7 @@
 /**
  * map.js — Google Maps 初期化・操作
  */
+import { getCategoryColor, getCategoryIconKey } from './categories.js';
 
 // 岐阜県関市の中心座標
 const SEKI_CENTER = { lat: 35.4943, lng: 136.9189 };
@@ -99,6 +100,8 @@ export function calcAge(completedAt) {
 
 /**
  * 物件データからマーカーを生成して地図に追加する
+ * - 住宅カテゴリ: 築年数色のピン（既存と同じ挙動）
+ * - その他カテゴリ: カテゴリ色の丸型バッジに Lucide アイコンを重ねた独自マーカー
  * @param {Array} properties
  * @param {Function} onClickCallback - マーカークリック時のコールバック(property)
  */
@@ -110,29 +113,64 @@ export function renderMarkers(properties, onClickCallback) {
     if (!property.latitude || !property.longitude) return;
     if (!property.is_visible) return;
 
-    const color = getMarkerColor(property.completed_at);
+    const category = property.category || 'building';
 
-    // PinElement でカラーピンを作成
-    const pin = new _PinElement({
-      background:  color,
-      borderColor: '#ffffff',
-      glyphColor:  '#ffffff',
-      scale: 1.2,
-    });
+    let content;
+    if (category === 'building') {
+      // 住宅: 既存の築年数色ピン
+      const color = getMarkerColor(property.completed_at);
+      content = new _PinElement({
+        background:  color,
+        borderColor: '#ffffff',
+        glyphColor:  '#ffffff',
+        scale: 1.2,
+      });
+    } else {
+      // 住宅以外: カテゴリ色の円形バッジ + Lucide アイコン
+      content = _buildCategoryMarker(category);
+    }
 
     const marker = new _AdvancedMarkerElement({
       position: { lat: Number(property.latitude), lng: Number(property.longitude) },
       map,
       title: property.property_name,
-      content: pin, // pin.element は deprecated
+      content,
     });
 
-    marker.addListener('gmp-click', () => { // click → gmp-click
+    marker.addListener('gmp-click', () => {
       if (onClickCallback) onClickCallback(property);
     });
 
     markers.push(marker);
   });
+}
+
+/**
+ * カテゴリ用マーカー要素（円形バッジ + Lucide アイコン）を生成
+ */
+function _buildCategoryMarker(categoryCode) {
+  const color    = getCategoryColor(categoryCode);
+  const iconKey  = getCategoryIconKey(categoryCode);
+
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = [
+    `background:${color}`,
+    'width:32px',
+    'height:32px',
+    'border-radius:9999px',
+    'border:2px solid #ffffff',
+    'box-shadow:0 1px 3px rgba(0,0,0,0.3)',
+    'display:flex',
+    'align-items:center',
+    'justify-content:center',
+    'color:#ffffff',
+    'transform:translateY(-4px)',
+  ].join(';');
+  wrapper.innerHTML = `<i data-lucide="${iconKey}" style="width:18px;height:18px;"></i>`;
+  if (typeof lucide !== 'undefined') {
+    lucide.createIcons({ nodes: [wrapper] });
+  }
+  return wrapper;
 }
 
 /**
