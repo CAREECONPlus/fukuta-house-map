@@ -71,7 +71,7 @@ const MAINT_AUTO_MAP_KEYWORDS = {
  * @returns {{ headers: string[], autoMapping: Object, rowCount: number, error: string|null }}
  */
 export function analyzeCsv(csvText, mode = 'properties') {
-  const lines = csvText.trim().split(/\r?\n/);
+  const lines = stripBom(csvText).trim().split(/\r?\n/);
   if (lines.length < 2) return { headers: [], autoMapping: {}, rowCount: 0, error: 'データが1件もありません' };
 
   // 先頭の空行（全列が空）をスキップしてヘッダー行を探す
@@ -104,7 +104,7 @@ export function analyzeCsv(csvText, mode = 'properties') {
  * @returns {{ data: Array, errors: string[] }}
  */
 export function parseCsvWithMapping(csvText, mapping) {
-  const lines  = csvText.trim().split(/\r?\n/);
+  const lines  = stripBom(csvText).trim().split(/\r?\n/);
 
   // 先頭の空行をスキップしてヘッダー行を探す
   let headerIdx = 0;
@@ -159,7 +159,7 @@ export function parseCsvWithMapping(csvText, mapping) {
  * @returns {{ data: Array, errors: string[] }}
  */
 export function parseMaintenanceCsvWithMapping(csvText, mapping) {
-  const lines = csvText.trim().split(/\r?\n/);
+  const lines = stripBom(csvText).trim().split(/\r?\n/);
 
   let headerIdx = 0;
   for (let i = 0; i < lines.length; i++) {
@@ -391,6 +391,11 @@ function _geocode(geocoder, address) {
 }
 
 function _sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+// Excel等が付与する UTF-8 BOM を除去（先頭のヘッダー列名と辞書の照合を成立させる）
+function stripBom(text) {
+  return text && text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+}
 
 function splitCsvLine(line) {
   const result = [];
