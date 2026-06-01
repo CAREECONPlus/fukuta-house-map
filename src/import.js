@@ -12,17 +12,41 @@ import {
 } from './supabase.js';
 import { propertyDupKey, addressDupKey, parseFlexibleDate } from './utils.js';
 import { normalizeBrandInput } from './propertyTypes.js';
+import { normalizeCategoryInput } from './categories.js';
+
+/**
+ * カテゴリ固有の extra フィールドのインポート対象キー
+ * key は properties.extra (JSONB) に格納される。
+ */
+const CATEGORY_EXTRA_FIELD_KEYS = [
+  'pole_number',  'pole_type',
+  'capacity_m3',  'area_m2', 'manager',
+  'road_name',    'width_m',
+];
 
 /**
  * システム項目の定義
  */
 export const FIELD_DEFS = [
-  { key: 'property_name', label: '物件名',      required: true,  hint: '例：○○邸、△△アパート' },
+  { key: 'property_name', label: '物件名／名称', required: true,  hint: '例：○○邸、A123号柱、○○調整池' },
   { key: 'address',       label: '住所',        required: true,  hint: '例：岐阜県関市○○1-2-3' },
-  { key: 'brand',         label: '物件種別',    required: false, hint: '登録済みの種別ラベルと自動照合（管理画面で追加可）' },
-  { key: 'completed_at',  label: '施工完了年月', required: false, hint: 'YYYY-MM、YYYY年MM月、令和2年10月 など' },
-  { key: 'phone_number',  label: '電話番号',    required: false, hint: '例：0575-XX-XXXX' },
-  { key: 'is_developed',  label: '自社開発物件', required: false, hint: '○ or true で自社開発扱い' },
+  { key: 'category',      label: 'カテゴリ',    required: false, hint: '住宅/電柱/調整池/道路 など。未指定は「住宅」扱い' },
+  // ===== 住宅専用 =====
+  { key: 'brand',         label: '物件種別 (住宅)',     required: false, hint: '登録済みの種別ラベルと自動照合（管理画面で追加可）' },
+  { key: 'completed_at',  label: '施工完了年月 (住宅)', required: false, hint: 'YYYY-MM、YYYY年MM月、令和2年10月 など' },
+  { key: 'phone_number',  label: '電話番号 (住宅)',     required: false, hint: '例：0575-XX-XXXX' },
+  { key: 'is_developed',  label: '自社開発物件 (住宅)', required: false, hint: '○ or true で自社開発扱い' },
+  // ===== 電柱専用 =====
+  { key: 'pole_number',   label: '電柱番号 (電柱)',     required: false, hint: '例：A123' },
+  { key: 'pole_type',     label: '電柱種類 (電柱)',     required: false, hint: '鉄塔 / コンクリート柱 / 木柱' },
+  // ===== 調整池専用 =====
+  { key: 'capacity_m3',   label: '容量 (調整池, m³)',   required: false, hint: '例：1500' },
+  { key: 'area_m2',       label: '面積 (調整池, m²)',   required: false, hint: '例：800' },
+  { key: 'manager',       label: '管理者 (調整池)',     required: false, hint: '例：岐阜県' },
+  // ===== 道路専用 =====
+  { key: 'road_name',     label: '道路名 (道路)',       required: false, hint: '例：県道○○線' },
+  { key: 'width_m',       label: '幅員 (道路, m)',      required: false, hint: '例：5.5' },
+  // ===== 共通 =====
   { key: 'notes',         label: '備考',        required: false, hint: '自由記述' },
 ];
 
@@ -30,12 +54,20 @@ export const FIELD_DEFS = [
  * 列名から自動マッピングを推定するキーワード辞書
  */
 const AUTO_MAP_KEYWORDS = {
-  property_name: ['物件名', '名称', '建物名', '物件', 'property_name'],
+  property_name: ['物件名', '名称', '建物名', '物件', '電柱名', '対象物', 'property_name', 'name'],
   address:       ['住所', '所在地', '住所・所在地', 'address'],
+  category:      ['カテゴリ', '区分', '分類', '対象種別', 'category'],
   brand:         ['物件種別', '種別', 'ブランド', 'brand'],
   completed_at:  ['施工完了', '施工完了年月', '竣工', '完成', '竣工年月', '完成年月', '施工年月', 'completed_at'],
   phone_number:  ['電話番号', '電話', 'TEL', 'tel', 'phone', 'phone_number', '連絡先'],
   is_developed:  ['自社開発', '開発物件', '自社', 'is_developed'],
+  pole_number:   ['電柱番号', 'ポール番号', 'pole_number', 'pole_no'],
+  pole_type:     ['電柱種類', '電柱タイプ', 'pole_type'],
+  capacity_m3:   ['容量', '容量(m³)', '容量(m3)', 'capacity', 'capacity_m3'],
+  area_m2:       ['面積', '面積(m²)', '面積(m2)', 'area', 'area_m2'],
+  manager:       ['管理者', '管理', 'manager'],
+  road_name:     ['道路名', '路線名', 'road_name'],
+  width_m:       ['幅員', '幅員(m)', '幅', 'width', 'width_m'],
   notes:         ['備考', 'メモ', '備考欄', 'notes'],
 };
 
@@ -134,16 +166,30 @@ export function parseCsvWithMapping(csvText, mapping) {
     const name    = get('property_name');
     const address = get('address');
 
-    if (!name) { errors.push(`${i + 1}行目: 物件名が空です`); continue; }
+    if (!name) { errors.push(`${i + 1}行目: 物件名/名称が空です`); continue; }
     if (!address) { errors.push(`${i + 1}行目: 住所が空です`); continue; }
+
+    // カテゴリ判定（未指定なら 'building'）
+    const category   = normalizeCategoryInput(get('category')) || 'building';
+    const isBuilding = category === 'building';
+
+    // カテゴリ固有の extra フィールドを収集（マッピング済みのキーだけ）
+    const extra = {};
+    CATEGORY_EXTRA_FIELD_KEYS.forEach((key) => {
+      const v = get(key);
+      if (v !== '' && v != null) extra[key] = v;
+    });
 
     data.push({
       property_name: name,
       address:       address,
-      brand:         normalizeBrand(get('brand')),
-      completed_at:  normalizeDate(get('completed_at')),
-      phone_number:  get('phone_number') || null,
-      is_developed:  normalizeBool(get('is_developed')),
+      category,
+      extra,
+      // 住宅専用フィールドはカテゴリが住宅のときのみ反映
+      brand:         isBuilding ? normalizeBrand(get('brand')) : null,
+      completed_at:  isBuilding ? normalizeDate(get('completed_at')) : null,
+      phone_number:  isBuilding ? (get('phone_number') || null) : null,
+      is_developed:  isBuilding ? normalizeBool(get('is_developed')) : false,
       notes:         get('notes') || null,
       is_visible:    true,
     });

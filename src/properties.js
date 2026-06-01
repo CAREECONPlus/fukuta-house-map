@@ -4,6 +4,7 @@
 import { renderMarkers, panTo, calcAge, getMarkerColor } from './map.js?v=7';
 import { showDetailPanel } from './ui.js?v=7';
 import { getLabel as getBrandLabel, getColor as getBrandColor } from './propertyTypes.js';
+import { getCategoryLabel, getCategoryColor } from './categories.js';
 
 let allProperties = [];
 let _lastFiltered  = []; // エクスポート・ビュー切替用に最新フィルタ結果を保持
@@ -58,17 +59,21 @@ export function exportFilteredCsv() {
   const props = _lastFiltered;
   if (props.length === 0) { alert('エクスポートする物件がありません'); return; }
 
-  const headers = ['物件名', '住所', '物件種別', '施工完了年月', '経過年数（年）', '電話番号', '自社開発物件', '備考'];
-  const rows = props.map((p) => [
-    p.property_name || '',
-    p.address       || '',
-    getBrandLabel(p.brand),
-    p.completed_at ? p.completed_at.substring(0, 7) : '',
-    p.completed_at ? Math.floor(calcAgeYears(p.completed_at)).toString() : '',
-    p.phone_number  || '',
-    p.is_developed ? '○' : '',
-    p.notes         || '',
-  ]);
+  const headers = ['カテゴリ', '物件名', '住所', '物件種別', '施工完了年月', '経過年数（年）', '電話番号', '自社開発物件', '備考'];
+  const rows = props.map((p) => {
+    const isBuilding = (p.category || 'building') === 'building';
+    return [
+      getCategoryLabel(p.category || 'building'),
+      p.property_name || '',
+      p.address       || '',
+      isBuilding ? getBrandLabel(p.brand) : '',
+      isBuilding && p.completed_at ? p.completed_at.substring(0, 7) : '',
+      isBuilding && p.completed_at ? Math.floor(calcAgeYears(p.completed_at)).toString() : '',
+      isBuilding ? (p.phone_number  || '') : '',
+      isBuilding && p.is_developed ? '○' : '',
+      p.notes         || '',
+    ];
+  });
 
   const csv = [headers, ...rows]
     .map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
@@ -282,13 +287,17 @@ export function updateProperty(updated) {
   if (before) {
     // 変更されたフィールドだけ記録
     const LABELS = {
-      property_name: '物件名', address: '住所', brand: '物件種別',
+      property_name: '物件名', address: '住所', category: 'カテゴリ', brand: '物件種別',
       completed_at: '施工完了', phone_number: '電話番号',
       notes: '備考',
     };
     const changes = Object.entries(LABELS)
       .filter(([key]) => before[key] !== updated[key])
-      .map(([key, label]) => ({ field: label, before: before[key] || '', after: updated[key] || '' }));
+      .map(([key, label]) => ({
+        field: label,
+        before: key === 'category' ? getCategoryLabel(before[key]) : (before[key] || ''),
+        after:  key === 'category' ? getCategoryLabel(updated[key]) : (updated[key] || ''),
+      }));
 
     if (changes.length > 0) {
       _changeLog.push({
@@ -322,22 +331,37 @@ export function applyFilterAndRender() {
   const phoneVal     = (document.getElementById('filter-phone')?.value || '').replace(/[\s\-‐－ー]/g, '');
   const developedVal = document.getElementById('filter-developed')?.checked || false;
 
+  // カテゴリチェックボックスの状態を取得（チェックされたカテゴリのみ通す）
+  const checkedCategories = Array.from(
+    document.querySelectorAll('#filter-categories input[type="checkbox"]:checked')
+  ).map((cb) => cb.value);
+  // フィルタUIが未描画の場合は全件通す
+  const categorySet = checkedCategories.length > 0
+    ? new Set(checkedCategories)
+    : null;
+
   const filtered = allProperties.filter((p) => {
+    const category = p.category || 'building';
+    if (categorySet && !categorySet.has(category)) return false;
+
     if (searchVal) {
       const name    = _normalize(p.property_name);
       const address = _normalize(p.address);
       if (!name.includes(searchVal) && !address.includes(searchVal)) return false;
     }
-    if (brandVal     && p.brand !== brandVal)                          return false;
-    if (phoneVal) {
-      const phone = (p.phone_number || '').replace(/[\s\-‐－ー]/g, '');
-      if (!phone.includes(phoneVal)) return false;
-    }
-    if (developedVal && !p.is_developed)                              return false;
-    if (ageMinVal !== '' || ageMaxVal !== '') {
-      const age = calcAgeYears(p.completed_at);
-      if (ageMinVal !== '' && age < Number(ageMinVal))     return false;
-      if (ageMaxVal !== '' && age > Number(ageMaxVal))     return false;
+    // brand / 築年数 / 電話 / 自社開発 は住宅カテゴリにのみ適用（他カテゴリでは無視）
+    if (category === 'building') {
+      if (brandVal     && p.brand !== brandVal)                          return false;
+      if (phoneVal) {
+        const phone = (p.phone_number || '').replace(/[\s\-‐－ー]/g, '');
+        if (!phone.includes(phoneVal)) return false;
+      }
+      if (developedVal && !p.is_developed)                              return false;
+      if (ageMinVal !== '' || ageMaxVal !== '') {
+        const age = calcAgeYears(p.completed_at);
+        if (ageMinVal !== '' && age < Number(ageMinVal))     return false;
+        if (ageMaxVal !== '' && age > Number(ageMaxVal))     return false;
+      }
     }
     return true;
   });
@@ -392,10 +416,28 @@ export function applyFilterAndRender() {
  * 物件カードHTML生成
  */
 function createPropertyCard(p) {
-  const color      = getMarkerColor(p.completed_at);
-  const age        = p.completed_at ? `築${Math.floor(calcAgeYears(p.completed_at))}年` : '不明';
-  const brandLabel = getBrandLabel(p.brand);
-  const brandColor = getBrandColor(p.brand);
+  const category      = p.category || 'building';
+  const categoryLabel = getCategoryLabel(category);
+  const categoryColor = getCategoryColor(category);
+  const isBuilding    = category === 'building';
+
+  // 住宅は築年数色、それ以外はカテゴリ色
+  const dotColor = isBuilding ? getMarkerColor(p.completed_at) : categoryColor;
+
+  // 住宅専用の追加バッジ
+  const brandLabel = isBuilding ? getBrandLabel(p.brand) : '';
+  const brandColor = isBuilding ? getBrandColor(p.brand) : '';
+  const ageText    = (isBuilding && p.completed_at)
+    ? `築${Math.floor(calcAgeYears(p.completed_at))}年`
+    : '';
+
+  const buildingBadges = isBuilding
+    ? `
+        ${brandLabel ? `<span class="badge badge-sm border-0 text-white" style="background:${brandColor}">${escHtml(brandLabel)}</span>` : ''}
+        <span class="badge badge-sm badge-ghost">${ageText || '不明'}</span>
+        ${p.phone_number ? `<span class="badge badge-sm badge-ghost">${escHtml(p.phone_number)}</span>` : ''}
+      `
+    : '';
 
   return `
     <div
@@ -404,17 +446,16 @@ function createPropertyCard(p) {
     >
       <div class="card-body p-3">
         <div class="flex items-start gap-2">
-          <span class="mt-1 inline-block w-3 h-3 rounded-full flex-shrink-0" style="background:${color}"></span>
+          <span class="mt-1 inline-block w-3 h-3 rounded-full flex-shrink-0" style="background:${dotColor}"></span>
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-1">
               <p class="font-semibold text-sm truncate">${escHtml(p.property_name)}</p>
-              ${p.is_developed ? '<span class="badge badge-xs badge-accent flex-shrink-0">開発</span>' : ''}
+              ${isBuilding && p.is_developed ? '<span class="badge badge-xs badge-accent flex-shrink-0">開発</span>' : ''}
             </div>
             <p class="text-xs text-base-content/60 truncate">${escHtml(p.address)}</p>
             <div class="flex gap-1 mt-1 flex-wrap">
-              ${brandLabel ? `<span class="badge badge-sm border-0 text-white" style="background:${brandColor}">${escHtml(brandLabel)}</span>` : ''}
-              <span class="badge badge-sm badge-ghost">${age}</span>
-              ${p.phone_number ? `<span class="badge badge-sm badge-ghost">${escHtml(p.phone_number)}</span>` : ''}
+              <span class="badge badge-sm border-0 text-white" style="background:${categoryColor}">${escHtml(categoryLabel)}</span>
+              ${buildingBadges}
             </div>
           </div>
         </div>
