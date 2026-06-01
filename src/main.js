@@ -490,7 +490,9 @@ function setupImportForm() {
       modeHint.textContent = '既存物件に紐づく点検履歴をまとめて取り込みます。「物件名」「住所」で既存物件を特定します。';
       sampleLink.setAttribute('href', 'data/import/sample_maintenance.csv');
     } else {
-      modeHint.textContent = '列名はどんな形式でも読み込めます。ファイルを選ぶと各列の対応先を設定できます。';
+      modeHint.innerHTML =
+        '住宅だけでなく <span class="font-semibold">電柱・調整池・道路</span> など全カテゴリの登録に対応しています。' +
+        'CSV に「カテゴリ」列を含めるか、未指定の行は住宅として扱われます。';
       sampleLink.setAttribute('href', 'data/import/sample.csv');
     }
     _reset();
