@@ -4,7 +4,7 @@
 import { calcAge } from './map.js?v=7';
 import { getMaintenanceByProperty, deleteMaintenance } from './maintenance.js';
 import { openGoogleMapsNav } from './routes.js';
-import { getChangeLog } from './properties.js?v=7';
+import { getChangeLog, hideCarousel } from './properties.js?v=8';
 import { getLabel as getBrandLabel } from './propertyTypes.js';
 import { getCategoryLabel, getCategoryColor } from './categories.js';
 
@@ -132,6 +132,14 @@ export function setupUI(onFilterChange = () => {}, onEdit = () => {}, onDelete =
   document.getElementById('btn-import')?.addEventListener('click', () => {
     document.getElementById('modal-import').showModal();
   });
+
+  // ボトムカルーセルを閉じる（× ボタン）
+  document.getElementById('btn-close-carousel')?.addEventListener('click', () => hideCarousel());
+
+  // スマホ初期表示時はサイドパネルを折りたたみ、まず地図を見せる
+  if (window.matchMedia('(max-width: 640px)').matches) {
+    document.getElementById('side-panel')?.classList.add('panel-collapsed');
+  }
 
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
