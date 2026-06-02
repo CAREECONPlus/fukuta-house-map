@@ -9,6 +9,7 @@ import { getCategoryLabel, getCategoryColor } from './categories.js';
 let allProperties = [];
 let _lastFiltered  = []; // エクスポート・ビュー切替用に最新フィルタ結果を保持
 let _currentView   = 'map'; // 'map' | 'list'
+let _activeId      = null;  // ボトムカルーセル / ピン強調表示で「選択中」の物件ID
 const _selectedIds = new Set(); // リストビューで選択中の物件ID
 
 // 変更履歴 Array<{property_id, property_name, changed_at, changes}>
@@ -407,8 +408,143 @@ export function applyFilterAndRender() {
   }
 
   // マーカー更新（マップビューのみ・APIキー設定済み時）
+  // ピンをクリックすると：ボトムカルーセルを該当カードへスクロール + マーカーをパン。
+  // 詳細パネルはカード内の「詳細を見る」ボタンで明示的に開く（オプトイン）。
   if (window.__MAPS_API_KEY__ !== 'YOUR_GOOGLE_MAPS_API_KEY') {
-    renderMarkers(filtered, (property) => showDetailPanel(property));
+    renderMarkers(filtered, (property) => setActiveProperty(property.id, { panMap: true, scrollCarousel: true }));
+  }
+
+  // ボトムカルーセル更新（マップビューのみ）
+  if (_currentView === 'map') {
+    renderBottomCarousel(filtered);
+    // 選択状態を引き継ぐ（フィルタ後に消えた場合はクリア）
+    if (_activeId && !filtered.some((p) => p.id === _activeId)) _activeId = null;
+    if (_activeId) setActiveProperty(_activeId, { panMap: false, scrollCarousel: true });
+  }
+}
+
+/**
+ * マップ下部の横スクロールカルーセルを描画する。
+ * フィルタ結果の全件を順番にカード化し、タップでピンと連動する。
+ */
+function renderBottomCarousel(properties) {
+  const track = document.getElementById('bottom-carousel-track');
+  if (!track) return;
+
+  if (properties.length === 0) {
+    track.innerHTML = '';
+    return;
+  }
+
+  track.innerHTML = properties.map((p) => createCarouselCard(p)).join('');
+
+  // カード本体クリック → アクティブ化 + マップをパン
+  track.querySelectorAll('[data-carousel-id]').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      // 詳細ボタンは別ハンドラで処理する（バブリング抑止）
+      if (e.target.closest('[data-carousel-detail]')) return;
+      const id = el.dataset.carouselId;
+      setActiveProperty(id, { panMap: true, scrollCarousel: false });
+    });
+  });
+
+  // 詳細ボタンクリック → 右パネル展開
+  track.querySelectorAll('[data-carousel-detail]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.carouselDetail;
+      const property = allProperties.find((p) => p.id === id);
+      if (property) showDetailPanel(property);
+    });
+  });
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+/**
+ * カルーセル内の1カードHTMLを生成する。カテゴリで内容を出し分け。
+ */
+function createCarouselCard(p) {
+  const category      = p.category || 'building';
+  const categoryLabel = getCategoryLabel(category);
+  const categoryColor = getCategoryColor(category);
+  const isBuilding    = category === 'building';
+
+  // カテゴリ別の主要情報行
+  let infoLines = '';
+  if (isBuilding) {
+    const brandLabel = getBrandLabel(p.brand);
+    const ageText    = p.completed_at ? `築${Math.floor(calcAgeYears(p.completed_at))}年` : '';
+    const phone      = p.phone_number || '';
+    infoLines = `
+      ${brandLabel ? `<div class="text-xs truncate"><span class="text-base-content/50">種別: </span>${escHtml(brandLabel)}</div>` : ''}
+      ${ageText ? `<div class="text-xs"><span class="text-base-content/50">築年数: </span>${escHtml(ageText)}</div>` : ''}
+      ${phone ? `<div class="text-xs truncate"><span class="text-base-content/50">電話: </span>${escHtml(phone)}</div>` : ''}
+    `;
+  } else {
+    const extra = p.extra || {};
+    const items = [];
+    if (category === 'utility_pole') {
+      if (extra.pole_number) items.push(['電柱番号', extra.pole_number]);
+      if (extra.pole_type)   items.push(['種類',     extra.pole_type]);
+    } else if (category === 'retention_pond') {
+      if (extra.capacity_m3) items.push(['容量', `${extra.capacity_m3} m³`]);
+      if (extra.area_m2)     items.push(['面積', `${extra.area_m2} m²`]);
+      if (extra.manager)     items.push(['管理者', extra.manager]);
+    } else if (category === 'road') {
+      if (extra.road_name) items.push(['道路名', extra.road_name]);
+      if (extra.width_m)   items.push(['幅員', `${extra.width_m} m`]);
+    }
+    infoLines = items.map(([k, v]) =>
+      `<div class="text-xs truncate"><span class="text-base-content/50">${escHtml(k)}: </span>${escHtml(v)}</div>`
+    ).join('');
+  }
+
+  return `
+    <div data-carousel-id="${escHtml(p.id)}"
+         class="snap-start flex-shrink-0 w-64 bg-base-100 rounded-lg shadow-md border-2 border-transparent cursor-pointer hover:border-base-300 transition-colors p-3">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="badge badge-sm border-0 text-white flex-shrink-0" style="background:${escHtml(categoryColor)}">${escHtml(categoryLabel)}</span>
+        <p class="font-semibold text-sm truncate flex-1">${escHtml(p.property_name)}</p>
+      </div>
+      <p class="text-xs text-base-content/60 truncate mb-1">${escHtml(p.address)}</p>
+      <div class="space-y-0.5 mb-2">${infoLines}</div>
+      <button type="button" data-carousel-detail="${escHtml(p.id)}"
+              class="btn btn-xs btn-outline w-full gap-1">
+        <i data-lucide="info" class="w-3 h-3"></i>詳細を見る
+      </button>
+    </div>`;
+}
+
+/**
+ * 物件を「選択中」にする。
+ *  - カルーセルの該当カードを active スタイルに
+ *  - 必要ならマップを該当ピンへパン
+ *  - 必要ならカルーセルを該当カードへスクロール
+ */
+export function setActiveProperty(id, { panMap = false, scrollCarousel = true } = {}) {
+  _activeId = id;
+  const property = allProperties.find((p) => p.id === id);
+  const track    = document.getElementById('bottom-carousel-track');
+  if (!track) return;
+
+  // カードのアクティブ表示更新
+  track.querySelectorAll('[data-carousel-id]').forEach((el) => {
+    const isActive = el.dataset.carouselId === id;
+    el.classList.toggle('border-primary', isActive);
+    el.classList.toggle('shadow-lg', isActive);
+    el.classList.toggle('border-transparent', !isActive);
+  });
+
+  // 必要ならカルーセルをスクロール
+  if (scrollCarousel) {
+    const target = track.querySelector(`[data-carousel-id="${CSS.escape(id)}"]`);
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }
+
+  // 必要ならマップをパン
+  if (panMap && property?.latitude && property?.longitude) {
+    panTo(Number(property.latitude), Number(property.longitude));
   }
 }
 
