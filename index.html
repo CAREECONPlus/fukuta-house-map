@@ -18,19 +18,22 @@
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 
   <!-- カスタムCSS -->
-  <link rel="stylesheet" href="styles/main.css?v=4" />
+  <link rel="stylesheet" href="styles/main.css?v=5" />
 </head>
 <body class="bg-base-200 min-h-screen flex flex-col">
 
   <!-- ===== ナビゲーションバー ===== -->
   <header class="navbar bg-base-100 shadow-md px-4 z-10 relative">
-    <div class="navbar-start">
-      <div class="flex items-center gap-2">
-        <i data-lucide="map-pin" class="text-primary w-6 h-6"></i>
-        <span class="text-lg font-bold tracking-wide">フクタハウス 施工物件マップ</span>
+    <div class="navbar-start min-w-0">
+      <div class="flex items-center gap-2 min-w-0">
+        <i data-lucide="map-pin" class="text-primary w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0"></i>
+        <span class="text-sm sm:text-lg font-bold tracking-wide truncate">
+          <span class="sm:hidden">物件マップ</span>
+          <span class="hidden sm:inline">フクタハウス 施工物件マップ</span>
+        </span>
       </div>
     </div>
-    <div class="navbar-end gap-2">
+    <div class="navbar-end gap-2 flex-shrink-0">
       <!-- マップ / リスト 切替 -->
       <div class="join">
         <button id="btn-view-map" class="btn btn-sm join-item btn-primary" title="マップ表示">
@@ -233,11 +236,18 @@
         </div>
       </div>
 
-      <!-- ボトムカルーセル（フィルタ済み全件をカード化、ピンと双方向シンク） -->
-      <div id="bottom-carousel" class="absolute left-0 right-0 bottom-0 z-10 pointer-events-none">
-        <div id="bottom-carousel-track"
-             class="pointer-events-auto flex gap-2 overflow-x-auto pb-3 pt-2 px-3 snap-x snap-mandatory scroll-smooth">
-          <!-- JS が描画 -->
+      <!-- ボトムカルーセル（ピン or 一覧タップ時にオンデマンド表示） -->
+      <div id="bottom-carousel" class="absolute left-0 right-0 z-10 pointer-events-none">
+        <div class="relative">
+          <button id="btn-close-carousel" type="button"
+                  class="pointer-events-auto absolute -top-3 right-3 z-30 btn btn-circle btn-xs bg-base-100 shadow-md border border-base-300"
+                  title="カルーセルを閉じる">
+            <i data-lucide="x" class="w-3 h-3"></i>
+          </button>
+          <div id="bottom-carousel-track"
+               class="pointer-events-auto flex gap-2 overflow-x-auto pb-3 pt-2 px-3 snap-x snap-mandatory scroll-smooth">
+            <!-- JS が描画 -->
+          </div>
         </div>
       </div>
     </div>

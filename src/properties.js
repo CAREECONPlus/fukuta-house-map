@@ -389,7 +389,14 @@ export function applyFilterAndRender() {
           el.addEventListener('click', () => {
             const id = el.getAttribute('data-property-id');
             const property = allProperties.find((p) => p.id === id);
-            if (property) {
+            if (!property) return;
+            const isMobile = window.matchMedia('(max-width: 640px)').matches;
+            if (isMobile) {
+              // スマホ：サイドパネルを畳んでカルーセル経由で確認させる
+              document.getElementById('side-panel')?.classList.add('panel-collapsed');
+              setActiveProperty(id, { panMap: true, scrollCarousel: true });
+            } else {
+              // PC：従来通り詳細パネルを開く
               showDetailPanel(property);
               if (property.latitude && property.longitude) {
                 panTo(property.latitude, property.longitude);
@@ -525,8 +532,12 @@ function createCarouselCard(p) {
 export function setActiveProperty(id, { panMap = false, scrollCarousel = true } = {}) {
   _activeId = id;
   const property = allProperties.find((p) => p.id === id);
+  const carousel = document.getElementById('bottom-carousel');
   const track    = document.getElementById('bottom-carousel-track');
   if (!track) return;
+
+  // スマホ表示時はカルーセルをオンデマンドで出現させる
+  carousel?.classList.add('carousel-active');
 
   // カードのアクティブ表示更新
   track.querySelectorAll('[data-carousel-id]').forEach((el) => {
@@ -546,6 +557,14 @@ export function setActiveProperty(id, { panMap = false, scrollCarousel = true } 
   if (panMap && property?.latitude && property?.longitude) {
     panTo(Number(property.latitude), Number(property.longitude));
   }
+}
+
+/**
+ * カルーセル表示を消す（× ボタン用）。アクティブIDも解除。
+ */
+export function hideCarousel() {
+  document.getElementById('bottom-carousel')?.classList.remove('carousel-active');
+  _activeId = null;
 }
 
 /**
