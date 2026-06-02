@@ -1,7 +1,7 @@
 /**
  * main.js — アプリ初期化
  */
-import { initMap } from './map.js?v=7';
+import { initMap, getMap } from './map.js?v=7';
 import { renderPropertyList, applyFilterAndRender, addProperty, updateProperty, deleteProperty, setViewMode, exportFilteredCsv, getAllProperties, getSelectedIds, getFilteredIds, removeProperties } from './properties.js?v=8';
 import { setupUI } from './ui.js?v=7';
 import { addMaintenance } from './maintenance.js';
@@ -114,6 +114,19 @@ const DEMO_PROPERTIES = [
 (async () => {
   await window.__mapsReady;
   await initMap();
+
+  // 詳細パネルが展開されている時にマップをタップしたら、パネルを折り畳んで地図を見せる
+  getMap()?.addListener('click', () => {
+    const detailPanel = document.getElementById('detail-panel');
+    if (!detailPanel) return;
+    const isShown     = !detailPanel.classList.contains('translate-x-full');
+    const isCollapsed = detailPanel.classList.contains('detail-collapsed');
+    if (isShown && !isCollapsed) {
+      detailPanel.classList.add('detail-collapsed');
+      // 既存の挙動と合わせて一覧パネルも畳む
+      document.getElementById('side-panel')?.classList.add('panel-collapsed');
+    }
+  });
 
   // 物件種別マスタを先に読み込む（ドロップダウン構築のため）
   await loadPropertyTypes();

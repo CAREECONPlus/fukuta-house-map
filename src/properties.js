@@ -509,7 +509,7 @@ function createCarouselCard(p) {
 
   return `
     <div data-carousel-id="${escHtml(p.id)}"
-         class="snap-start flex-shrink-0 w-64 bg-base-100 rounded-lg shadow-md border-2 border-transparent cursor-pointer hover:border-base-300 transition-colors p-3">
+         class="snap-center flex-shrink-0 w-64 bg-base-100 rounded-lg shadow-md border-2 border-transparent cursor-pointer hover:border-base-300 transition-colors p-3">
       <div class="flex items-center gap-2 mb-1">
         <span class="badge badge-sm border-0 text-white flex-shrink-0" style="background:${escHtml(categoryColor)}">${escHtml(categoryLabel)}</span>
         <p class="font-semibold text-sm truncate flex-1">${escHtml(p.property_name)}</p>
@@ -559,13 +559,6 @@ export function setActiveProperty(id, { panMap = false, scrollCarousel = true } 
   }
 }
 
-/**
- * カルーセル表示を消す（× ボタン用）。アクティブIDも解除。
- */
-export function hideCarousel() {
-  document.getElementById('bottom-carousel')?.classList.remove('carousel-active');
-  _activeId = null;
-}
 
 /**
  * 物件カードHTML生成

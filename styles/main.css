@@ -143,10 +143,10 @@ html, body {
     transform: rotate(180deg);
   }
 
-  /* ボトムカルーセル：折りたたみ状態のサイドパネル（52px）の上に配置
+  /* ボトムカルーセル：折りたたみ状態のサイドパネル（52px）の少し上に配置
    * 既定では隠し、ピン or 一覧タップで .carousel-active が付くと表示。 */
   #bottom-carousel {
-    bottom: 52px;
+    bottom: 60px;
     display: none;
   }
 
@@ -154,14 +154,17 @@ html, body {
     display: block;
   }
 
-  /* カードは中央寄せ。但しオーバーフロー時は左から始まるよう safe を指定 */
+  /* 256px カードの中央を画面中央に揃えるため両端に padding を入れる。
+   * スナップは snap-center なので最初／最後のカードも中央スナップできる。 */
   #bottom-carousel-track {
-    justify-content: safe center;
+    padding-left: calc(50% - 8rem);
+    padding-right: calc(50% - 8rem);
   }
 
-  /* サイドパネル展開時／詳細パネル表示時はカルーセル状態に関わらず隠す */
+  /* サイドパネル展開時はカルーセルを隠す。
+   * 詳細パネルは「展開状態」のときのみ隠す（折りたたみ時は併存OK）。 */
   main:has(#side-panel:not(.panel-collapsed)) #bottom-carousel,
-  main:has(#detail-panel:not(.translate-x-full)) #bottom-carousel {
+  main:has(#detail-panel:not(.translate-x-full):not(.detail-collapsed)) #bottom-carousel {
     display: none;
   }
 }
