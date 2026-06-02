@@ -4,7 +4,7 @@
 import { calcAge } from './map.js?v=7';
 import { getMaintenanceByProperty, deleteMaintenance } from './maintenance.js';
 import { openGoogleMapsNav } from './routes.js';
-import { getChangeLog, hideCarousel } from './properties.js?v=8';
+import { getChangeLog } from './properties.js?v=8';
 import { getLabel as getBrandLabel } from './propertyTypes.js';
 import { getCategoryLabel, getCategoryColor } from './categories.js';
 
@@ -133,9 +133,6 @@ export function setupUI(onFilterChange = () => {}, onEdit = () => {}, onDelete =
     document.getElementById('modal-import').showModal();
   });
 
-  // ボトムカルーセルを閉じる（× ボタン）
-  document.getElementById('btn-close-carousel')?.addEventListener('click', () => hideCarousel());
-
   // スマホ初期表示時はサイドパネルを折りたたみ、まず地図を見せる
   if (window.matchMedia('(max-width: 640px)').matches) {
     document.getElementById('side-panel')?.classList.add('panel-collapsed');
@@ -166,20 +163,12 @@ export function showDetailPanel(property) {
   document.getElementById('detail-panel').classList.remove('translate-x-full');
   if (typeof lucide !== 'undefined') lucide.createIcons();
 
-  // スマホ用ヘッダータップで開閉（一覧パネルと連動）
+  // スマホ用ヘッダータップで詳細パネル自身を開閉（カルーセルと併存させるため
+  // 一覧パネルとは同期しない）
   const header = document.getElementById('detail-header');
   header.onclick = (e) => {
-    // ✕ボタンはパネルを閉じるので開閉トグルは発火させない
     if (e.target.closest('#btn-close-detail')) return;
-    const detailPanel = document.getElementById('detail-panel');
-    const sidePanel   = document.getElementById('side-panel');
-    detailPanel.classList.toggle('detail-collapsed');
-    // 一覧パネルも同期して折りたたむ／展開する
-    if (detailPanel.classList.contains('detail-collapsed')) {
-      sidePanel.classList.add('panel-collapsed');
-    } else {
-      sidePanel.classList.remove('panel-collapsed');
-    }
+    document.getElementById('detail-panel').classList.toggle('detail-collapsed');
   };
 }
 
@@ -189,8 +178,7 @@ export function showDetailPanel(property) {
 export function hideDetailPanel() {
   document.getElementById('detail-panel').classList.add('translate-x-full');
   document.getElementById('route-info')?.classList.add('hidden');
-  // ✕で閉じたときは一覧パネルを展開した状態に戻す
-  document.getElementById('side-panel').classList.remove('panel-collapsed');
+  // スマホ：一覧パネルは畳んだまま（カルーセルに戻す）。PCでは元から畳まれていない
   _currentProperty = null;
 }
 
