@@ -415,10 +415,20 @@ export function applyFilterAndRender() {
   }
 
   // マーカー更新（マップビューのみ・APIキー設定済み時）
-  // ピンをクリックすると：ボトムカルーセルを該当カードへスクロール + マーカーをパン。
-  // 詳細パネルはカード内の「詳細を見る」ボタンで明示的に開く（オプトイン）。
+  // スマホ：ピンクリックでボトムカルーセルにスクロール（詳細はオプトイン）
+  // PC  ：カルーセルは存在しないので従来通り詳細パネルを直接展開
   if (window.__MAPS_API_KEY__ !== 'YOUR_GOOGLE_MAPS_API_KEY') {
-    renderMarkers(filtered, (property) => setActiveProperty(property.id, { panMap: true, scrollCarousel: true }));
+    renderMarkers(filtered, (property) => {
+      const isMobile = window.matchMedia('(max-width: 640px)').matches;
+      if (isMobile) {
+        setActiveProperty(property.id, { panMap: true, scrollCarousel: true });
+      } else {
+        showDetailPanel(property);
+        if (property.latitude && property.longitude) {
+          panTo(Number(property.latitude), Number(property.longitude));
+        }
+      }
+    });
   }
 
   // ボトムカルーセル更新（マップビューのみ）
