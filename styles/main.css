@@ -143,10 +143,10 @@ html, body {
     transform: rotate(180deg);
   }
 
-  /* ボトムカルーセル：折りたたみ状態のサイドパネル（52px）の少し上に配置
+  /* ボトムカルーセル：折りたたみ状態のサイドパネル（52px）から十分離して配置
    * 既定では隠し、ピン or 一覧タップで .carousel-active が付くと表示。 */
   #bottom-carousel {
-    bottom: 60px;
+    bottom: 80px;
     display: none;
   }
 
@@ -165,6 +165,11 @@ html, body {
    * 詳細パネルは「展開状態」のときのみ隠す（折りたたみ時は併存OK）。 */
   main:has(#side-panel:not(.panel-collapsed)) #bottom-carousel,
   main:has(#detail-panel:not(.translate-x-full):not(.detail-collapsed)) #bottom-carousel {
+    display: none;
+  }
+
+  /* 詳細パネルが出ているときは絞り込みハンドルを隠して、下部のバーを1本に揃える */
+  main:has(#detail-panel:not(.translate-x-full)) #side-panel {
     display: none;
   }
 }
