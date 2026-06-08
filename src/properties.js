@@ -1,8 +1,8 @@
 /**
  * properties.js — 物件データ表示・フィルタ
  */
-import { renderMarkers, panTo, calcAge, getMarkerColor } from './map.js?v=9';
-import { showDetailPanel } from './ui.js?v=9';
+import { renderMarkers, panTo, calcAge, getMarkerColor } from './map.js?v=10';
+import { showDetailPanel } from './ui.js?v=10';
 import { getLabel as getBrandLabel, getColor as getBrandColor } from './propertyTypes.js';
 import { getCategoryLabel, getCategoryColor } from './categories.js';
 
@@ -502,8 +502,11 @@ function createCarouselCard(p) {
     const extra = p.extra || {};
     const items = [];
     if (category === 'utility_pole') {
-      if (extra.pole_number) items.push(['電柱番号', extra.pole_number]);
-      if (extra.pole_type)   items.push(['種類',     extra.pole_type]);
+      if (extra.pole_number)   items.push(['電柱番号', extra.pole_number]);
+      if (extra.power_company) items.push(['電力会社', extra.power_company]);
+      if (extra.office)        items.push(['営業所',   extra.office]);
+      if (extra.pole_count)    items.push(['本数',     `${extra.pole_count} 本`]);
+      if (extra.stay_wire)     items.push(['支線',     extra.stay_wire]);
     } else if (category === 'retention_pond') {
       if (extra.area_m2) items.push(['面積', `${extra.area_m2} m²`]);
       if (extra.manager) items.push(['管理者', extra.manager]);

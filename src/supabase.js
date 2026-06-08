@@ -173,6 +173,29 @@ export async function deleteCategoryDb(id) {
   });
 }
 
+// ===== pole_offices（電柱 営業所マスタ）=====
+
+export async function fetchPoleOffices() {
+  return _get('pole_offices', {
+    select:    '*',
+    is_active: 'is.true',
+    order:     'sort_order.asc,label.asc',
+  });
+}
+
+export async function insertPoleOffice(data) {
+  const rows = await _post('pole_offices', data);
+  return Array.isArray(rows) ? rows[0] : rows;
+}
+
+export async function deletePoleOfficeDb(id) {
+  // 物理削除ではなく論理削除（is_active=false）
+  await _patch('pole_offices', { id: `eq.${id}` }, {
+    is_active:  false,
+    updated_at: new Date().toISOString(),
+  });
+}
+
 // ===== maintenance =====
 
 export async function fetchMaintenance(propertyId) {
