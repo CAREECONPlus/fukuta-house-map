@@ -1,9 +1,9 @@
 /**
  * main.js — アプリ初期化
  */
-import { initMap, getMap } from './map.js?v=7';
-import { renderPropertyList, applyFilterAndRender, addProperty, updateProperty, deleteProperty, setViewMode, exportFilteredCsv, getAllProperties, getSelectedIds, getFilteredIds, removeProperties } from './properties.js?v=8';
-import { setupUI } from './ui.js?v=7';
+import { initMap, getMap } from './map.js?v=9';
+import { renderPropertyList, applyFilterAndRender, addProperty, updateProperty, deleteProperty, setViewMode, exportFilteredCsv, getAllProperties, getSelectedIds, getFilteredIds, removeProperties } from './properties.js?v=9';
+import { setupUI } from './ui.js?v=9';
 import { addMaintenance } from './maintenance.js';
 import {
   isSupabaseConfigured,
@@ -42,7 +42,7 @@ import {
  */
 const CATEGORY_EXTRA_FIELDS = {
   utility_pole:   ['pole_number', 'pole_type'],
-  retention_pond: ['capacity_m3', 'area_m2', 'manager'],
+  retention_pond: ['area_m2', 'manager'],
   road:           ['road_name', 'width_m'],
 };
 

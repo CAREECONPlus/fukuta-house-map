@@ -1,8 +1,8 @@
 /**
  * properties.js — 物件データ表示・フィルタ
  */
-import { renderMarkers, panTo, calcAge, getMarkerColor } from './map.js?v=7';
-import { showDetailPanel } from './ui.js?v=7';
+import { renderMarkers, panTo, calcAge, getMarkerColor } from './map.js?v=9';
+import { showDetailPanel } from './ui.js?v=9';
 import { getLabel as getBrandLabel, getColor as getBrandColor } from './propertyTypes.js';
 import { getCategoryLabel, getCategoryColor } from './categories.js';
 
@@ -505,9 +505,8 @@ function createCarouselCard(p) {
       if (extra.pole_number) items.push(['電柱番号', extra.pole_number]);
       if (extra.pole_type)   items.push(['種類',     extra.pole_type]);
     } else if (category === 'retention_pond') {
-      if (extra.capacity_m3) items.push(['容量', `${extra.capacity_m3} m³`]);
-      if (extra.area_m2)     items.push(['面積', `${extra.area_m2} m²`]);
-      if (extra.manager)     items.push(['管理者', extra.manager]);
+      if (extra.area_m2) items.push(['面積', `${extra.area_m2} m²`]);
+      if (extra.manager) items.push(['管理者', extra.manager]);
     } else if (category === 'road') {
       if (extra.road_name) items.push(['道路名', extra.road_name]);
       if (extra.width_m)   items.push(['幅員', `${extra.width_m} m`]);

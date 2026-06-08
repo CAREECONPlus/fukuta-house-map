@@ -397,15 +397,9 @@
 
         <!-- ===== 調整池専用フィールド ===== -->
         <div data-category-only="retention_pond" class="space-y-3 hidden">
-          <div class="grid grid-cols-2 gap-3">
-            <div class="form-control">
-              <label class="label"><span class="label-text">容量 (m³)</span></label>
-              <input type="number" data-extra-key="capacity_m3" step="any" min="0" class="input input-bordered input-sm" placeholder="例: 1500" />
-            </div>
-            <div class="form-control">
-              <label class="label"><span class="label-text">面積 (m²)</span></label>
-              <input type="number" data-extra-key="area_m2" step="any" min="0" class="input input-bordered input-sm" placeholder="例: 800" />
-            </div>
+          <div class="form-control">
+            <label class="label"><span class="label-text">面積 (m²)</span></label>
+            <input type="number" data-extra-key="area_m2" step="any" min="0" class="input input-bordered input-sm" placeholder="例: 800" />
           </div>
           <div class="form-control">
             <label class="label"><span class="label-text">管理者</span></label>
@@ -691,6 +685,6 @@
   ></script>
 
   <!-- アプリ本体（ES modules） -->
-  <script type="module" src="src/main.js?v=7"></script>
+  <script type="module" src="src/main.js?v=9"></script>
 </body>
 </html>

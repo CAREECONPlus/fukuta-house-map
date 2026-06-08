@@ -86,11 +86,11 @@ async function _ensureMap() {
     content: pin,
   });
 
-  _marker.addListener('gmp-dragend', () => {
-    const p = _marker.position;
-    const pos = { lat: typeof p.lat === 'function' ? p.lat() : p.lat,
-                  lng: typeof p.lng === 'function' ? p.lng() : p.lng };
-    _setMarkerPos(pos);
+  // ドラッグ終了でピン座標を更新する。
+  // 注意: AdvancedMarkerElement のドラッグ終了イベントは 'dragend'（'gmp-dragend' ではない）。
+  //       誤ったイベント名だとドラッグ操作が座標に反映されず「調整しても反映されない」不具合になる。
+  _marker.addListener('dragend', () => {
+    _setMarkerPos(_readMarkerPos());
   });
 
   // 地図クリックで移動
@@ -100,7 +100,9 @@ async function _ensureMap() {
 
   // ボタンを配線（モジュールロード時に1回だけ）
   document.getElementById('btn-pin-confirm')?.addEventListener('click', () => {
-    if (_currentPos && _onConfirm) _onConfirm(_currentPos);
+    // 確定時はマーカーの実位置を直接読む（イベント取りこぼしに対する保険）
+    const pos = _readMarkerPos() || _currentPos;
+    if (pos && _onConfirm) _onConfirm(pos);
     document.getElementById('modal-pin-adjust')?.close();
   });
   document.getElementById('btn-pin-cancel')?.addEventListener('click', () => {
@@ -129,6 +131,18 @@ function _setMarkerPos(pos) {
   if (_marker) _marker.position = pos;
   const el = document.getElementById('pin-adjust-coords');
   if (el) el.textContent = `座標：${pos.lat.toFixed(6)}, ${pos.lng.toFixed(6)}`;
+}
+
+/**
+ * マーカーの現在位置を {lat,lng} で返す（LatLng / リテラル両対応）。
+ */
+function _readMarkerPos() {
+  if (!_marker || !_marker.position) return null;
+  const p = _marker.position;
+  return {
+    lat: typeof p.lat === 'function' ? p.lat() : p.lat,
+    lng: typeof p.lng === 'function' ? p.lng() : p.lng,
+  };
 }
 
 function _geocode(address) {

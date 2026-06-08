@@ -20,7 +20,7 @@ import { normalizeCategoryInput } from './categories.js';
  */
 const CATEGORY_EXTRA_FIELD_KEYS = [
   'pole_number',  'pole_type',
-  'capacity_m3',  'area_m2', 'manager',
+  'area_m2', 'manager',
   'road_name',    'width_m',
 ];
 
@@ -40,7 +40,6 @@ export const FIELD_DEFS = [
   { key: 'pole_number',   label: '電柱番号 (電柱)',     required: false, hint: '例：A123' },
   { key: 'pole_type',     label: '電柱種類 (電柱)',     required: false, hint: '鉄塔 / コンクリート柱 / 木柱' },
   // ===== 調整池専用 =====
-  { key: 'capacity_m3',   label: '容量 (調整池, m³)',   required: false, hint: '例：1500' },
   { key: 'area_m2',       label: '面積 (調整池, m²)',   required: false, hint: '例：800' },
   { key: 'manager',       label: '管理者 (調整池)',     required: false, hint: '例：岐阜県' },
   // ===== 道路専用 =====
@@ -63,7 +62,6 @@ const AUTO_MAP_KEYWORDS = {
   is_developed:  ['自社開発', '開発物件', '自社', 'is_developed'],
   pole_number:   ['電柱番号', 'ポール番号', 'pole_number', 'pole_no'],
   pole_type:     ['電柱種類', '電柱タイプ', 'pole_type'],
-  capacity_m3:   ['容量', '容量(m³)', '容量(m3)', 'capacity', 'capacity_m3'],
   area_m2:       ['面積', '面積(m²)', '面積(m2)', 'area', 'area_m2'],
   manager:       ['管理者', '管理', 'manager'],
   road_name:     ['道路名', '路線名', 'road_name'],
