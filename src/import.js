@@ -43,7 +43,7 @@ export const FIELD_DEFS = [
   { key: 'power_company', label: '電力会社 (電柱)',     required: false, hint: '中部電力 / NTT / その他' },
   { key: 'office',        label: '営業所 (電柱)',       required: false, hint: '例：岐阜支社（管理画面で追加可）' },
   { key: 'pole_count',    label: '本数 (電柱)',         required: false, hint: '例：1' },
-  { key: 'stay_wire',     label: '支線 (電柱)',         required: false, hint: '有 / 無' },
+  { key: 'stay_wire',     label: '支線 (電柱)',         required: false, hint: '無 / 1本 / 2本' },
   // ===== 調整池専用 =====
   { key: 'area_m2',       label: '面積 (調整池, m²)',   required: false, hint: '例：800' },
   { key: 'manager',       label: '管理者 (調整池)',     required: false, hint: '例：岐阜県' },
