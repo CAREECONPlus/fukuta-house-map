@@ -9,16 +9,17 @@ import {
   fetchProperties,
   insertMaintenance,
   isSupabaseConfigured,
-} from './supabase.js';
-import { propertyDupKey, addressDupKey, parseFlexibleDate } from './utils.js';
-import { normalizeBrandInput } from './propertyTypes.js';
-import { normalizeCategoryInput } from './categories.js';
+} from './supabase.js?v=11';
+import { propertyDupKey, addressDupKey, parseFlexibleDate } from './utils.js?v=11';
+import { normalizeBrandInput } from './propertyTypes.js?v=11';
+import { normalizeCategoryInput } from './categories.js?v=11';
 
 /**
  * カテゴリ固有の extra フィールドのインポート対象キー
  * key は properties.extra (JSONB) に格納される。
  */
 const CATEGORY_EXTRA_FIELD_KEYS = [
+  'building_type', 'land_ownership',
   'pole_number',  'power_company', 'office', 'pole_count', 'stay_wire',
   'area_m2', 'manager',
   'road_name',    'width_m',
@@ -32,10 +33,11 @@ export const FIELD_DEFS = [
   { key: 'address',       label: '住所',        required: true,  hint: '例：岐阜県関市○○1-2-3' },
   { key: 'category',      label: 'カテゴリ',    required: false, hint: '住宅/電柱/調整池/道路 など。未指定は「住宅」扱い' },
   // ===== 住宅専用 =====
-  { key: 'brand',         label: '物件種別 (住宅)',     required: false, hint: '登録済みの種別ラベルと自動照合（管理画面で追加可）' },
-  { key: 'completed_at',  label: '施工完了年月 (住宅)', required: false, hint: 'YYYY-MM、YYYY年MM月、令和2年10月 など' },
-  { key: 'phone_number',  label: '電話番号 (住宅)',     required: false, hint: '例：0575-XX-XXXX' },
-  { key: 'is_developed',  label: '自社開発物件 (住宅)', required: false, hint: '○ or true で自社開発扱い' },
+  { key: 'brand',          label: 'ブランド (住宅)',     required: false, hint: 'フクタハウス / アーバンスイート（管理画面で追加可）' },
+  { key: 'building_type',  label: '物件タイプ (住宅)',   required: false, hint: '注文 / 分譲 / モデルハウス / 店舗 / その他' },
+  { key: 'land_ownership', label: '土地区分 (住宅)',     required: false, hint: '自社土地 / 施主所有土地 / その他' },
+  { key: 'completed_at',   label: '施工完了年月 (住宅)', required: false, hint: 'YYYY-MM、YYYY年MM月、令和2年10月 など' },
+  { key: 'phone_number',   label: '電話番号 (住宅)',     required: false, hint: '例：0575-XX-XXXX' },
   // ===== 電柱専用 =====
   { key: 'pole_number',   label: '電柱番号 (電柱)',     required: false, hint: '例：A123' },
   { key: 'power_company', label: '電力会社 (電柱)',     required: false, hint: '中部電力 / NTT / その他' },
@@ -59,10 +61,11 @@ const AUTO_MAP_KEYWORDS = {
   property_name: ['物件名', '名称', '建物名', '物件', '電柱名', '対象物', 'property_name', 'name'],
   address:       ['住所', '所在地', '住所・所在地', 'address'],
   category:      ['カテゴリ', '区分', '分類', '対象種別', 'category'],
-  brand:         ['物件種別', '種別', 'ブランド', 'brand'],
+  brand:         ['ブランド', '物件種別', '種別', 'brand'],
+  building_type: ['物件タイプ', 'タイプ', '商品種別', 'building_type'],
+  land_ownership:['土地区分', '土地', '自社開発', '所有', 'land_ownership'],
   completed_at:  ['施工完了', '施工完了年月', '竣工', '完成', '竣工年月', '完成年月', '施工年月', 'completed_at'],
   phone_number:  ['電話番号', '電話', 'TEL', 'tel', 'phone', 'phone_number', '連絡先'],
-  is_developed:  ['自社開発', '開発物件', '自社', 'is_developed'],
   pole_number:   ['電柱番号', 'ポール番号', 'pole_number', 'pole_no'],
   power_company: ['電力会社', '電力', '会社', 'power_company'],
   office:        ['営業所', '支社', '営業所名', 'office'],
@@ -183,6 +186,10 @@ export function parseCsvWithMapping(csvText, mapping) {
       const v = get(key);
       if (v !== '' && v != null) extra[key] = v;
     });
+    // 物件タイプはラベルで入っている可能性があるため code に正規化する
+    if (isBuilding && extra.building_type) {
+      extra.building_type = normalizeBrand(extra.building_type) || extra.building_type;
+    }
 
     data.push({
       property_name: name,
@@ -193,7 +200,8 @@ export function parseCsvWithMapping(csvText, mapping) {
       brand:         isBuilding ? normalizeBrand(get('brand')) : null,
       completed_at:  isBuilding ? normalizeDate(get('completed_at')) : null,
       phone_number:  isBuilding ? (get('phone_number') || null) : null,
-      is_developed:  isBuilding ? normalizeBool(get('is_developed')) : false,
+      // is_developed 列は後方互換のため土地区分=自社土地のとき真として同期する
+      is_developed:  isBuilding ? (extra.land_ownership === '自社土地') : false,
       notes:         get('notes') || null,
       is_visible:    true,
     });

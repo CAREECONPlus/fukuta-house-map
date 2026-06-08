@@ -111,12 +111,22 @@
             </div>
           </div>
 
-          <!-- 物件種別フィルタ（住宅カテゴリ専用。option は JS で動的に挿入） -->
+          <!-- ブランドフィルタ（住宅カテゴリ専用。option は JS で動的に挿入） -->
           <div class="form-control mb-3">
             <label class="label py-0 mb-1">
-              <span class="label-text text-xs font-medium">物件種別 <span class="text-base-content/40 font-normal">(住宅のみ)</span></span>
+              <span class="label-text text-xs font-medium">ブランド <span class="text-base-content/40 font-normal">(住宅のみ)</span></span>
             </label>
             <select id="filter-brand" class="select select-bordered select-sm w-full">
+              <option value="">すべて</option>
+            </select>
+          </div>
+
+          <!-- 物件タイプフィルタ（住宅カテゴリ専用。option は JS で動的に挿入） -->
+          <div class="form-control mb-3">
+            <label class="label py-0 mb-1">
+              <span class="label-text text-xs font-medium">物件タイプ <span class="text-base-content/40 font-normal">(住宅のみ)</span></span>
+            </label>
+            <select id="filter-building-type" class="select select-bordered select-sm w-full">
               <option value="">すべて</option>
             </select>
           </div>
@@ -148,12 +158,17 @@
             />
           </div>
 
-          <!-- 自社開発フィルタ -->
+          <!-- 土地区分フィルタ（住宅カテゴリ専用） -->
           <div class="form-control">
-            <label class="label cursor-pointer py-0 justify-start gap-2">
-              <input type="checkbox" id="filter-developed" class="checkbox checkbox-sm checkbox-primary" />
-              <span class="label-text text-xs font-medium">自社開発物件のみ</span>
+            <label class="label py-0 mb-1">
+              <span class="label-text text-xs font-medium">土地区分 <span class="text-base-content/40 font-normal">(住宅のみ)</span></span>
             </label>
+            <select id="filter-land" class="select select-bordered select-sm w-full">
+              <option value="">すべて</option>
+              <option value="自社土地">自社土地</option>
+              <option value="施主所有土地">施主所有土地</option>
+              <option value="その他">その他</option>
+            </select>
           </div>
         </div>
 
@@ -339,16 +354,25 @@
 
         <!-- ===== 住宅専用フィールド ===== -->
         <div data-category-only="building" class="space-y-3">
-          <div class="form-control">
-            <div class="label py-0 mb-1 flex items-center justify-between">
-              <span class="label-text">物件種別</span>
-              <button type="button" id="btn-manage-types" class="btn btn-xs btn-ghost gap-1" title="種別を追加・編集">
-                <i data-lucide="settings" class="w-3 h-3"></i>種別を管理
-              </button>
+          <div class="label py-0 mb-0 flex items-center justify-between">
+            <span class="label-text">物件種別</span>
+            <button type="button" id="btn-manage-types" class="btn btn-xs btn-ghost gap-1" title="種別を追加・削除">
+              <i data-lucide="settings" class="w-3 h-3"></i>種別を管理
+            </button>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="form-control">
+              <label class="label py-0"><span class="label-text text-xs">ブランド</span></label>
+              <select name="brand" id="form-brand-select" class="select select-bordered select-sm">
+                <option value="">選択...</option>
+              </select>
             </div>
-            <select name="brand" id="form-brand-select" class="select select-bordered select-sm">
-              <option value="">選択...</option>
-            </select>
+            <div class="form-control">
+              <label class="label py-0"><span class="label-text text-xs">物件タイプ</span></label>
+              <select data-extra-key="building_type" id="form-building-type-select" class="select select-bordered select-sm">
+                <option value="">選択...</option>
+              </select>
+            </div>
           </div>
           <div class="form-control">
             <label class="label"><span class="label-text">施工完了年月</span></label>
@@ -367,11 +391,14 @@
               <label class="label"><span class="label-text">電話番号</span></label>
               <input type="tel" name="phone_number" class="input input-bordered input-sm" placeholder="例：0575-xx-xxxx" autocomplete="off" />
             </div>
-            <div class="form-control justify-end">
-              <label class="label cursor-pointer gap-2 justify-start">
-                <input type="checkbox" name="is_developed" class="checkbox checkbox-sm checkbox-primary" />
-                <span class="label-text text-sm">自社開発物件</span>
-              </label>
+            <div class="form-control">
+              <label class="label"><span class="label-text">土地区分</span></label>
+              <select data-extra-key="land_ownership" class="select select-bordered select-sm">
+                <option value="">選択...</option>
+                <option value="自社土地">自社土地</option>
+                <option value="施主所有土地">施主所有土地</option>
+                <option value="その他">その他</option>
+              </select>
             </div>
           </div>
         </div>
@@ -529,15 +556,22 @@
     <div class="modal-box w-11/12 max-w-md">
       <h3 class="font-bold text-lg mb-2">物件種別の管理</h3>
       <p class="text-xs text-base-content/60 mb-3">
-        並び順は登録順です。色はマーカーや一覧バッジで使用されます。
+        「ブランド」と「物件タイプ」の2区分で管理します。色はマーカーや一覧バッジで使用されます。
       </p>
 
-      <div id="types-list" class="space-y-2 max-h-80 overflow-y-auto pr-1">
+      <div id="types-list" class="space-y-3 max-h-80 overflow-y-auto pr-1">
         <!-- JS が描画 -->
       </div>
 
       <div class="divider text-xs my-3">新しい種別を追加</div>
       <form id="form-add-type" class="flex flex-wrap items-end gap-2">
+        <div class="form-control">
+          <label class="label py-0"><span class="label-text text-xs">区分</span></label>
+          <select name="kind" class="select select-bordered select-sm">
+            <option value="building_type">物件タイプ</option>
+            <option value="brand">ブランド</option>
+          </select>
+        </div>
         <div class="form-control flex-1 min-w-[8rem]">
           <label class="label py-0"><span class="label-text text-xs">ラベル</span></label>
           <input type="text" name="label" class="input input-bordered input-sm" required placeholder="例: モデルハウス" />
@@ -740,6 +774,6 @@
   ></script>
 
   <!-- アプリ本体（ES modules） -->
-  <script type="module" src="src/main.js?v=10"></script>
+  <script type="module" src="src/main.js?v=11"></script>
 </body>
 </html>

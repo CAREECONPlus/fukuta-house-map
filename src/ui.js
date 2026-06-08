@@ -1,12 +1,12 @@
 /**
  * ui.js — UI共通処理（パネル開閉・イベント登録）
  */
-import { calcAge } from './map.js?v=10';
-import { getMaintenanceByProperty, deleteMaintenance } from './maintenance.js';
-import { openGoogleMapsNav } from './routes.js';
-import { getChangeLog } from './properties.js?v=10';
-import { getLabel as getBrandLabel } from './propertyTypes.js';
-import { getCategoryLabel, getCategoryColor } from './categories.js';
+import { calcAge } from './map.js?v=11';
+import { getMaintenanceByProperty, deleteMaintenance } from './maintenance.js?v=11';
+import { openGoogleMapsNav } from './routes.js?v=11';
+import { getChangeLog } from './properties.js?v=11';
+import { getLabel as getBrandLabel } from './propertyTypes.js?v=11';
+import { getCategoryLabel, getCategoryColor } from './categories.js?v=11';
 
 /**
  * カテゴリ別 extra フィールドの表示定義
@@ -45,23 +45,25 @@ export function setupUI(onFilterChange = () => {}, onEdit = () => {}, onDelete =
 
   // フィルタ変更（select）
   document.getElementById('filter-brand')?.addEventListener('change', onFilterChange);
+  document.getElementById('filter-building-type')?.addEventListener('change', onFilterChange);
+  document.getElementById('filter-land')?.addEventListener('change', onFilterChange);
   // 築年数（数値入力）
   ['filter-age-min', 'filter-age-max'].forEach((id) => {
     document.getElementById(id)?.addEventListener('input', onFilterChange);
   });
-  // フィルタ変更（text / checkbox）
+  // フィルタ変更（text）
   document.getElementById('filter-search')?.addEventListener('input', onFilterChange);
   document.getElementById('filter-phone')?.addEventListener('input', onFilterChange);
-  document.getElementById('filter-developed')?.addEventListener('change', onFilterChange);
 
   // フィルタリセット（PC・モバイル共通）
   const _resetFilter = () => {
-    document.getElementById('filter-search').value      = '';
-    document.getElementById('filter-brand').value       = '';
-    document.getElementById('filter-age-min').value     = '';
-    document.getElementById('filter-age-max').value     = '';
-    document.getElementById('filter-phone').value       = '';
-    document.getElementById('filter-developed').checked = false;
+    document.getElementById('filter-search').value         = '';
+    document.getElementById('filter-brand').value          = '';
+    const bt = document.getElementById('filter-building-type'); if (bt) bt.value = '';
+    const ld = document.getElementById('filter-land');          if (ld) ld.value = '';
+    document.getElementById('filter-age-min').value        = '';
+    document.getElementById('filter-age-max').value        = '';
+    document.getElementById('filter-phone').value          = '';
     onFilterChange();
   };
   document.getElementById('btn-reset-filter')?.addEventListener('click', _resetFilter);
@@ -221,6 +223,9 @@ function _renderDetailContent(property) {
 
   // カテゴリ固有 extra フィールド
   const extra = property.extra || {};
+  // 住宅の物件タイプ / 土地区分（extra 格納）
+  const buildingTypeLabel = isBuilding ? getBrandLabel(extra.building_type) : '';
+  const landOwnership     = isBuilding ? (extra.land_ownership || '') : '';
   const extraRows = (EXTRA_FIELD_DISPLAY[category] || [])
     .map((d) => {
       const v = extra[d.key];
@@ -238,12 +243,9 @@ function _renderDetailContent(property) {
         </dd>
       </div>
       ${row('住所',     property.address)}
-      ${isBuilding ? row('物件種別', brandLabel) : ''}
-      ${isBuilding && property.is_developed ? `
-        <div class="flex gap-2">
-          <dt class="text-base-content/50 w-20 flex-shrink-0"></dt>
-          <dd class="font-medium flex-1"><span class="badge badge-sm badge-accent">自社開発物件</span></dd>
-        </div>` : ''}
+      ${isBuilding ? row('ブランド',   brandLabel) : ''}
+      ${isBuilding ? row('物件タイプ', buildingTypeLabel) : ''}
+      ${isBuilding ? row('土地区分',   landOwnership) : ''}
       ${isBuilding ? row('施工完了', completedLabel) : ''}
       ${isBuilding ? row('経過年数', age) : ''}
       ${isBuilding ? phoneRow(property.phone_number) : ''}
@@ -376,6 +378,8 @@ async function openDetailModal(property) {
 
   // カテゴリ固有 extra フィールド
   const extra = property.extra || {};
+  const buildingTypeLabel = isBuilding ? getBrandLabel(extra.building_type) : '';
+  const landOwnership     = isBuilding ? (extra.land_ownership || '') : '';
   const extraFields = (EXTRA_FIELD_DISPLAY[category] || [])
     .map((d) => {
       const v = extra[d.key];
@@ -387,7 +391,9 @@ async function openDetailModal(property) {
   const fields = [
     ['カテゴリ', categoryLabel],
     ['住所',     property.address],
-    isBuilding && ['物件種別', brandLabel],
+    isBuilding && ['ブランド',   brandLabel],
+    isBuilding && ['物件タイプ', buildingTypeLabel],
+    isBuilding && ['土地区分',   landOwnership],
     isBuilding && ['施工完了', completedLabel],
     isBuilding && ['経過年数', age],
     isBuilding && ['電話番号', property.phone_number],

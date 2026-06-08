@@ -13,8 +13,8 @@ import {
   insertCategory,
   updateCategoryDb,
   deleteCategoryDb,
-} from './supabase.js';
-import { normalizeKey } from './utils.js';
+} from './supabase.js?v=11';
+import { normalizeKey } from './utils.js?v=11';
 
 // Supabase 未設定時のフォールバック（マイグレーション 003 のシードと等価）
 const FALLBACK_CATEGORIES = [

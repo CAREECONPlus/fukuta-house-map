@@ -10,18 +10,24 @@ import {
   insertPropertyType,
   updatePropertyTypeDb,
   deletePropertyTypeDb,
-} from './supabase.js';
-import { normalizeKey } from './utils.js';
+} from './supabase.js?v=11';
+import { normalizeKey } from './utils.js?v=11';
+
+// 物件種別の区分（kind）
+//  - 'brand'         : ブランド（フクタハウス / アーバンスイート）→ properties.brand に保存
+//  - 'building_type' : 物件タイプ（注文 / 分譲 / …）→ properties.extra.building_type に保存
+export const KIND_BRAND = 'brand';
+export const KIND_BUILDING_TYPE = 'building_type';
 
 // Supabase 未設定時のフォールバック（旧ハードコードと等価）
 const FALLBACK_TYPES = [
-  { id: 'fb-fh', code: 'fukuta_house', label: 'フクタハウス',   color: '#2563eb', sort_order: 10 },
-  { id: 'fb-us', code: 'urban_suite',  label: 'アーバンスイート', color: '#9333ea', sort_order: 20 },
-  { id: 'fb-cb', code: 'custom_built', label: '注文',           color: '#0891b2', sort_order: 30 },
-  { id: 'fb-sd', code: 'subdivision',  label: '分譲',           color: '#16a34a', sort_order: 40 },
-  { id: 'fb-mh', code: 'model_house',  label: 'モデルハウス',    color: '#ea580c', sort_order: 50 },
-  { id: 'fb-sh', code: 'shop',         label: '店舗',           color: '#dc2626', sort_order: 60 },
-  { id: 'fb-ot', code: 'other',        label: 'その他',         color: '#6b7280', sort_order: 90 },
+  { id: 'fb-fh', code: 'fukuta_house', label: 'フクタハウス',   color: '#2563eb', kind: 'brand',         sort_order: 10 },
+  { id: 'fb-us', code: 'urban_suite',  label: 'アーバンスイート', color: '#9333ea', kind: 'brand',         sort_order: 20 },
+  { id: 'fb-cb', code: 'custom_built', label: '注文',           color: '#0891b2', kind: 'building_type', sort_order: 30 },
+  { id: 'fb-sd', code: 'subdivision',  label: '分譲',           color: '#16a34a', kind: 'building_type', sort_order: 40 },
+  { id: 'fb-mh', code: 'model_house',  label: 'モデルハウス',    color: '#ea580c', kind: 'building_type', sort_order: 50 },
+  { id: 'fb-sh', code: 'shop',         label: '店舗',           color: '#dc2626', kind: 'building_type', sort_order: 60 },
+  { id: 'fb-ot', code: 'other',        label: 'その他',         color: '#6b7280', kind: 'building_type', sort_order: 90 },
 ];
 
 let _types = [];
@@ -49,6 +55,23 @@ export async function loadPropertyTypes() {
  */
 export function getPropertyTypes() {
   return _types;
+}
+
+/**
+ * 指定 kind の種別だけを返す。kind 未設定の行は 'building_type' 扱い。
+ */
+export function getTypesByKind(kind) {
+  return _types.filter((t) => (t.kind || KIND_BUILDING_TYPE) === kind);
+}
+
+/** ブランド（フクタハウス等）一覧 */
+export function getBrands() {
+  return getTypesByKind(KIND_BRAND);
+}
+
+/** 物件タイプ（注文/分譲等）一覧 */
+export function getBuildingTypes() {
+  return getTypesByKind(KIND_BUILDING_TYPE);
 }
 
 /**
@@ -105,14 +128,20 @@ function _notifyChanged() {
 /**
  * 種別を追加する。code は label からスラッグ生成。
  */
-export async function addPropertyType({ label, color }) {
+export async function addPropertyType({ label, color, kind }) {
   const code = _slugify(label);
   if (!code) throw new Error('ラベルが空です');
   if (_types.some((t) => t.code === code)) {
     throw new Error('同じコードの種別が既にあります（ラベルを少し変えてください）');
   }
   const sortOrder = (_types.reduce((m, t) => Math.max(m, t.sort_order || 0), 0)) + 10;
-  const payload = { code, label, color: color || '#6b7280', sort_order: sortOrder, is_active: true };
+  const payload = {
+    code, label,
+    color:      color || '#6b7280',
+    kind:       kind === KIND_BRAND ? KIND_BRAND : KIND_BUILDING_TYPE,
+    sort_order: sortOrder,
+    is_active:  true,
+  };
   if (isSupabaseConfigured()) {
     const row = await insertPropertyType(payload);
     _types = [..._types, row].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));

@@ -12,7 +12,7 @@ import {
   fetchPoleOffices,
   insertPoleOffice,
   deletePoleOfficeDb,
-} from './supabase.js';
+} from './supabase.js?v=11';
 
 // Supabase 未設定時のフォールバック（マイグレーション 004 のシードと等価）
 const FALLBACK_OFFICES = [

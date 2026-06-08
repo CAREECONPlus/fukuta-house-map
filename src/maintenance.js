@@ -9,7 +9,7 @@ import {
   fetchMaintenance,
   insertMaintenance,
   deleteMaintenanceDb,
-} from './supabase.js';
+} from './supabase.js?v=11';
 
 // インメモリストア（Supabase 未設定時 / キャッシュ）
 // Map<property_id, Array<MaintenanceRecord>>
