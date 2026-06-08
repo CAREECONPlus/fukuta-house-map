@@ -29,13 +29,12 @@ jobs:
         uses: actions/checkout@v4
 
       # index.html 内のプレースホルダーを実際のキーに置換
+      # ※Map ID はハードコード運用に戻したため sed 対象から外している。
+      #   将来の環境分離時に再度 Secret 化する想定。
       - name: Inject API keys
         run: |
           sed -i \
             "s|YOUR_GOOGLE_MAPS_API_KEY|${{ secrets.GOOGLE_MAPS_API_KEY }}|g" \
-            index.html
-          sed -i \
-            "s|YOUR_GOOGLE_MAPS_MAP_ID|${{ secrets.GOOGLE_MAPS_MAP_ID }}|g" \
             index.html
           sed -i \
             "s|YOUR_SUPABASE_URL|${{ secrets.SUPABASE_URL }}|g" \
