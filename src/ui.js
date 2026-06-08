@@ -1,10 +1,10 @@
 /**
  * ui.js — UI共通処理（パネル開閉・イベント登録）
  */
-import { calcAge } from './map.js?v=7';
+import { calcAge } from './map.js?v=9';
 import { getMaintenanceByProperty, deleteMaintenance } from './maintenance.js';
 import { openGoogleMapsNav } from './routes.js';
-import { getChangeLog } from './properties.js?v=8';
+import { getChangeLog } from './properties.js?v=9';
 import { getLabel as getBrandLabel } from './propertyTypes.js';
 import { getCategoryLabel, getCategoryColor } from './categories.js';
 
@@ -18,7 +18,6 @@ const EXTRA_FIELD_DISPLAY = {
     { key: 'pole_type',   label: '種類' },
   ],
   retention_pond: [
-    { key: 'capacity_m3', label: '容量', suffix: ' m³' },
     { key: 'area_m2',     label: '面積', suffix: ' m²' },
     { key: 'manager',     label: '管理者' },
   ],
