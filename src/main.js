@@ -1,10 +1,10 @@
 /**
  * main.js — アプリ初期化
  */
-import { initMap, getMap } from './map.js?v=10';
-import { renderPropertyList, applyFilterAndRender, addProperty, updateProperty, deleteProperty, setViewMode, exportFilteredCsv, getAllProperties, getSelectedIds, getFilteredIds, removeProperties } from './properties.js?v=10';
-import { setupUI } from './ui.js?v=10';
-import { addMaintenance } from './maintenance.js';
+import { initMap, getMap } from './map.js?v=11';
+import { renderPropertyList, applyFilterAndRender, addProperty, updateProperty, deleteProperty, setViewMode, exportFilteredCsv, getAllProperties, getSelectedIds, getFilteredIds, removeProperties } from './properties.js?v=11';
+import { setupUI } from './ui.js?v=11';
+import { addMaintenance } from './maintenance.js?v=11';
 import {
   isSupabaseConfigured,
   fetchProperties,
@@ -12,18 +12,22 @@ import {
   updatePropertyDb,
   deletePropertyDb,
   deletePropertiesDb,
-} from './supabase.js';
-import { FIELD_DEFS, MAINT_FIELD_DEFS, analyzeCsv, parseCsvWithMapping, parseMaintenanceCsvWithMapping, importProperties, importMaintenance } from './import.js';
-import { propertyDupKey, addressDupKey, parseFlexibleDate, formatDateJp } from './utils.js';
-import { openPinAdjustModal } from './pinAdjust.js';
+} from './supabase.js?v=11';
+import { FIELD_DEFS, MAINT_FIELD_DEFS, analyzeCsv, parseCsvWithMapping, parseMaintenanceCsvWithMapping, importProperties, importMaintenance } from './import.js?v=11';
+import { propertyDupKey, addressDupKey, parseFlexibleDate, formatDateJp } from './utils.js?v=11';
+import { openPinAdjustModal } from './pinAdjust.js?v=11';
 import {
   loadPropertyTypes,
   getPropertyTypes,
+  getBrands,
+  getBuildingTypes,
   onPropertyTypesChanged,
   addPropertyType,
   updatePropertyType,
   removePropertyType,
-} from './propertyTypes.js';
+  KIND_BRAND,
+  KIND_BUILDING_TYPE,
+} from './propertyTypes.js?v=11';
 import {
   loadCategories,
   getCategories,
@@ -34,20 +38,21 @@ import {
   addCategory,
   updateCategory,
   removeCategory,
-} from './categories.js';
+} from './categories.js?v=11';
 import {
   loadPoleOffices,
   getPoleOffices,
   onPoleOfficesChanged,
   addPoleOffice,
   removePoleOffice,
-} from './poleOffices.js';
+} from './poleOffices.js?v=11';
 
 /**
  * カテゴリごとの extra フィールド定義
  * key は properties.extra (JSONB) のキー名
  */
 const CATEGORY_EXTRA_FIELDS = {
+  building:       ['building_type', 'land_ownership'],
   utility_pole:   ['pole_number', 'power_company', 'office', 'pole_count', 'stay_wire'],
   retention_pond: ['area_m2', 'manager'],
   road:           ['road_name', 'width_m'],
@@ -68,6 +73,7 @@ const DEMO_PROPERTIES = [
     property_name: '関市サンプル邸 A',
     address: '岐阜県関市若草通4丁目',
     brand: 'fukuta_house',
+    extra: { building_type: 'custom_built', land_ownership: '施主所有土地' },
     is_developed: false,
     completed_at: '2022-03',
     phone_number: '0575-00-0000',
@@ -81,6 +87,7 @@ const DEMO_PROPERTIES = [
     property_name: '関市サンプル邸 B',
     address: '岐阜県関市本町4丁目',
     brand: 'fukuta_house',
+    extra: { building_type: 'custom_built', land_ownership: '施主所有土地' },
     is_developed: false,
     completed_at: '2018-06',
     phone_number: '0575-00-0001',
@@ -94,7 +101,8 @@ const DEMO_PROPERTIES = [
     property_name: '関市サンプルアパート',
     address: '岐阜県関市桜ヶ丘',
     brand: 'urban_suite',
-    is_developed: false,
+    extra: { building_type: 'subdivision', land_ownership: '自社土地' },
+    is_developed: true,
     completed_at: '2010-11',
     phone_number: '0575-00-0002',
     latitude: 35.4880,
@@ -107,6 +115,7 @@ const DEMO_PROPERTIES = [
     property_name: '関市サンプル分譲地',
     address: '岐阜県関市安桜町',
     brand: 'fukuta_house',
+    extra: { building_type: 'subdivision', land_ownership: '自社土地' },
     is_developed: true,
     completed_at: '2014-09',
     phone_number: '0575-00-0000',
@@ -362,7 +371,8 @@ function setupAddForm() {
         category,
         extra,
         brand:         isBuilding ? (data.brand        || null) : null,
-        is_developed:  isBuilding ? (data.is_developed === 'on') : false,
+        // is_developed 列は後方互換のため土地区分=自社土地のとき真として同期する
+        is_developed:  isBuilding ? (extra.land_ownership === '自社土地') : false,
         completed_at:  completedAt,
         phone_number:  isBuilding ? (data.phone_number || null) : null,
         notes:         data.notes        || null,
@@ -418,7 +428,6 @@ function openEditForm(property) {
   form.querySelector('[name="property_name"]').value  = property.property_name    || '';
   form.querySelector('[name="address"]').value        = property.address          || '';
   form.querySelector('[name="brand"]').value          = property.brand            || '';
-  form.querySelector('[name="is_developed"]').checked = property.is_developed     || false;
   form.querySelector('[name="completed_at"]').value   = property.completed_at?.substring(0, 7).replace('-', '/') || '';
   form.querySelector('[name="phone_number"]').value   = property.phone_number || '';
   form.querySelector('[name="notes"]').value          = property.notes        || '';
@@ -795,22 +804,26 @@ function confirmDuplicate(dup, input) {
  * 物件種別ドロップダウン（フォーム・フィルタ）を再描画する
  */
 function _renderBrandSelects() {
-  const types = getPropertyTypes();
-  const formSel   = document.getElementById('form-brand-select');
-  const filterSel = document.getElementById('filter-brand');
+  const brands        = getBrands();
+  const buildingTypes = getBuildingTypes();
 
-  if (formSel) {
-    const prev = formSel.value;
-    formSel.innerHTML = '<option value="">選択...</option>' +
-      types.map((t) => `<option value="${t.code}">${escAttr(t.label)}</option>`).join('');
-    if (prev && types.some((t) => t.code === prev)) formSel.value = prev;
-  }
-  if (filterSel) {
-    const prev = filterSel.value;
-    filterSel.innerHTML = '<option value="">すべて</option>' +
-      types.map((t) => `<option value="${t.code}">${escAttr(t.label)}</option>`).join('');
-    if (prev && types.some((t) => t.code === prev)) filterSel.value = prev;
-  }
+  // ブランド（フォーム / フィルタ）
+  _fillTypeSelect(document.getElementById('form-brand-select'),   brands,        '選択...');
+  _fillTypeSelect(document.getElementById('filter-brand'),        brands,        'すべて');
+  // 物件タイプ（フォーム / フィルタ）
+  _fillTypeSelect(document.getElementById('form-building-type-select'), buildingTypes, '選択...');
+  _fillTypeSelect(document.getElementById('filter-building-type'),      buildingTypes, 'すべて');
+}
+
+/**
+ * 種別 select を再描画する。選択中の値は可能な限り維持する。
+ */
+function _fillTypeSelect(sel, types, placeholder) {
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = `<option value="">${escAttr(placeholder)}</option>` +
+    types.map((t) => `<option value="${escAttr(t.code)}">${escAttr(t.label)}</option>`).join('');
+  if (prev && types.some((t) => t.code === prev)) sel.value = prev;
 }
 
 /**
@@ -907,9 +920,10 @@ function _setupTypesManager() {
     const fd    = new FormData(e.target);
     const label = (fd.get('label') || '').toString().trim();
     const color = (fd.get('color') || '#6b7280').toString();
+    const kind  = (fd.get('kind')  || KIND_BUILDING_TYPE).toString();
     if (!label) return;
     try {
-      await addPropertyType({ label, color });
+      await addPropertyType({ label, color, kind });
       e.target.reset();
       e.target.querySelector('[name="color"]').value = '#6b7280';
       _renderTypesList();
@@ -922,12 +936,16 @@ function _setupTypesManager() {
 function _renderTypesList() {
   const list = document.getElementById('types-list');
   if (!list) return;
-  const types = getPropertyTypes();
-  if (types.length === 0) {
+  const groups = [
+    { kind: KIND_BRAND,         title: 'ブランド',   types: getBrands() },
+    { kind: KIND_BUILDING_TYPE, title: '物件タイプ', types: getBuildingTypes() },
+  ];
+  if (groups.every((g) => g.types.length === 0)) {
     list.innerHTML = '<p class="text-xs text-base-content/40 py-3 text-center">種別がありません</p>';
     return;
   }
-  list.innerHTML = types.map((t) => `
+
+  const rowHtml = (t) => `
     <div class="flex items-center gap-2" data-type-id="${escAttr(t.id)}">
       <input type="color" data-field="color" value="${escAttr(t.color || '#6b7280')}"
              class="input input-bordered input-xs w-10 h-8 p-0.5" />
@@ -939,6 +957,16 @@ function _renderTypesList() {
       <button type="button" data-action="delete" class="btn btn-xs btn-ghost text-error" title="非表示にする">
         <i data-lucide="trash-2" class="w-3 h-3"></i>
       </button>
+    </div>`;
+
+  list.innerHTML = groups.map((g) => `
+    <div>
+      <p class="text-xs font-semibold text-base-content/60 mb-1">${escAttr(g.title)}</p>
+      <div class="space-y-2">
+        ${g.types.length > 0
+          ? g.types.map(rowHtml).join('')
+          : '<p class="text-xs text-base-content/30 pl-1">なし</p>'}
+      </div>
     </div>
   `).join('');
 

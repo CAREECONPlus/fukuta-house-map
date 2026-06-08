@@ -1,10 +1,10 @@
 /**
  * properties.js — 物件データ表示・フィルタ
  */
-import { renderMarkers, panTo, calcAge, getMarkerColor } from './map.js?v=10';
-import { showDetailPanel } from './ui.js?v=10';
-import { getLabel as getBrandLabel, getColor as getBrandColor } from './propertyTypes.js';
-import { getCategoryLabel, getCategoryColor } from './categories.js';
+import { renderMarkers, panTo, calcAge, getMarkerColor } from './map.js?v=11';
+import { showDetailPanel } from './ui.js?v=11';
+import { getLabel as getBrandLabel, getColor as getBrandColor } from './propertyTypes.js?v=11';
+import { getCategoryLabel, getCategoryColor } from './categories.js?v=11';
 
 let allProperties = [];
 let _lastFiltered  = []; // エクスポート・ビュー切替用に最新フィルタ結果を保持
@@ -60,18 +60,20 @@ export function exportFilteredCsv() {
   const props = _lastFiltered;
   if (props.length === 0) { alert('エクスポートする物件がありません'); return; }
 
-  const headers = ['カテゴリ', '物件名', '住所', '物件種別', '施工完了年月', '経過年数（年）', '電話番号', '自社開発物件', '備考'];
+  const headers = ['カテゴリ', '物件名', '住所', 'ブランド', '物件タイプ', '土地区分', '施工完了年月', '経過年数（年）', '電話番号', '備考'];
   const rows = props.map((p) => {
     const isBuilding = (p.category || 'building') === 'building';
+    const extra = p.extra || {};
     return [
       getCategoryLabel(p.category || 'building'),
       p.property_name || '',
       p.address       || '',
       isBuilding ? getBrandLabel(p.brand) : '',
+      isBuilding ? getBrandLabel(extra.building_type) : '',
+      isBuilding ? (extra.land_ownership || '') : '',
       isBuilding && p.completed_at ? p.completed_at.substring(0, 7) : '',
       isBuilding && p.completed_at ? Math.floor(calcAgeYears(p.completed_at)).toString() : '',
       isBuilding ? (p.phone_number  || '') : '',
-      isBuilding && p.is_developed ? '○' : '',
       p.notes         || '',
     ];
   });
@@ -136,7 +138,7 @@ function renderListView(properties) {
           </th>
           <th>物件名</th>
           <th class="hidden lg:table-cell">住所</th>
-          <th>物件種別</th>
+          <th>ブランド</th>
           <th class="hidden sm:table-cell">施工完了</th>
           <th>築年数</th>
           <th class="hidden sm:table-cell">電話番号</th>
@@ -161,8 +163,8 @@ function renderListView(properties) {
                         style="background:${color}"></span>
                   <div class="min-w-0">
                     <p class="font-medium text-sm truncate max-w-[140px]">${escHtml(p.property_name)}</p>
-                    ${p.is_developed
-                      ? '<span class="badge badge-xs badge-accent">自社開発</span>'
+                    ${p.extra?.land_ownership
+                      ? `<span class="badge badge-xs badge-accent">${escHtml(p.extra.land_ownership)}</span>`
                       : ''}
                   </div>
                 </div>
@@ -325,12 +327,13 @@ export function deleteProperty(property) {
  * フィルタを適用して再描画する
  */
 export function applyFilterAndRender() {
-  const searchVal    = _normalize((document.getElementById('filter-search')?.value || '').trim());
-  const brandVal     = document.getElementById('filter-brand')?.value      || '';
-  const ageMinVal    = document.getElementById('filter-age-min')?.value    || '';
-  const ageMaxVal    = document.getElementById('filter-age-max')?.value    || '';
-  const phoneVal     = (document.getElementById('filter-phone')?.value || '').replace(/[\s\-‐－ー]/g, '');
-  const developedVal = document.getElementById('filter-developed')?.checked || false;
+  const searchVal       = _normalize((document.getElementById('filter-search')?.value || '').trim());
+  const brandVal        = document.getElementById('filter-brand')?.value         || '';
+  const buildingTypeVal = document.getElementById('filter-building-type')?.value || '';
+  const landVal         = document.getElementById('filter-land')?.value          || '';
+  const ageMinVal       = document.getElementById('filter-age-min')?.value       || '';
+  const ageMaxVal       = document.getElementById('filter-age-max')?.value       || '';
+  const phoneVal        = (document.getElementById('filter-phone')?.value || '').replace(/[\s\-‐－ー]/g, '');
 
   // カテゴリチェックボックスの状態を取得（チェックされたカテゴリのみ通す）
   const checkedCategories = Array.from(
@@ -350,14 +353,15 @@ export function applyFilterAndRender() {
       const address = _normalize(p.address);
       if (!name.includes(searchVal) && !address.includes(searchVal)) return false;
     }
-    // brand / 築年数 / 電話 / 自社開発 は住宅カテゴリにのみ適用（他カテゴリでは無視）
+    // ブランド / 物件タイプ / 土地区分 / 築年数 / 電話 は住宅カテゴリにのみ適用（他は無視）
     if (category === 'building') {
-      if (brandVal     && p.brand !== brandVal)                          return false;
+      if (brandVal && p.brand !== brandVal)                             return false;
+      if (buildingTypeVal && (p.extra?.building_type || '') !== buildingTypeVal) return false;
+      if (landVal && (p.extra?.land_ownership || '') !== landVal)       return false;
       if (phoneVal) {
         const phone = (p.phone_number || '').replace(/[\s\-‐－ー]/g, '');
         if (!phone.includes(phoneVal)) return false;
       }
-      if (developedVal && !p.is_developed)                              return false;
       if (ageMinVal !== '' || ageMaxVal !== '') {
         const age = calcAgeYears(p.completed_at);
         if (ageMinVal !== '' && age < Number(ageMinVal))     return false;
@@ -491,10 +495,14 @@ function createCarouselCard(p) {
   let infoLines = '';
   if (isBuilding) {
     const brandLabel = getBrandLabel(p.brand);
+    const typeLabel  = getBrandLabel(p.extra?.building_type);
+    const land       = p.extra?.land_ownership || '';
     const ageText    = p.completed_at ? `築${Math.floor(calcAgeYears(p.completed_at))}年` : '';
     const phone      = p.phone_number || '';
     infoLines = `
-      ${brandLabel ? `<div class="text-xs truncate"><span class="text-base-content/50">種別: </span>${escHtml(brandLabel)}</div>` : ''}
+      ${brandLabel ? `<div class="text-xs truncate"><span class="text-base-content/50">ブランド: </span>${escHtml(brandLabel)}</div>` : ''}
+      ${typeLabel ? `<div class="text-xs truncate"><span class="text-base-content/50">物件タイプ: </span>${escHtml(typeLabel)}</div>` : ''}
+      ${land ? `<div class="text-xs truncate"><span class="text-base-content/50">土地区分: </span>${escHtml(land)}</div>` : ''}
       ${ageText ? `<div class="text-xs"><span class="text-base-content/50">築年数: </span>${escHtml(ageText)}</div>` : ''}
       ${phone ? `<div class="text-xs truncate"><span class="text-base-content/50">電話: </span>${escHtml(phone)}</div>` : ''}
     `;
@@ -587,6 +595,8 @@ function createPropertyCard(p) {
   // 住宅専用の追加バッジ
   const brandLabel = isBuilding ? getBrandLabel(p.brand) : '';
   const brandColor = isBuilding ? getBrandColor(p.brand) : '';
+  const typeLabel  = isBuilding ? getBrandLabel(p.extra?.building_type) : '';
+  const typeColor  = isBuilding ? getBrandColor(p.extra?.building_type) : '';
   const ageText    = (isBuilding && p.completed_at)
     ? `築${Math.floor(calcAgeYears(p.completed_at))}年`
     : '';
@@ -594,6 +604,7 @@ function createPropertyCard(p) {
   const buildingBadges = isBuilding
     ? `
         ${brandLabel ? `<span class="badge badge-sm border-0 text-white" style="background:${brandColor}">${escHtml(brandLabel)}</span>` : ''}
+        ${typeLabel ? `<span class="badge badge-sm border-0 text-white" style="background:${typeColor}">${escHtml(typeLabel)}</span>` : ''}
         <span class="badge badge-sm badge-ghost">${ageText || '不明'}</span>
         ${p.phone_number ? `<span class="badge badge-sm badge-ghost">${escHtml(p.phone_number)}</span>` : ''}
       `
@@ -610,7 +621,7 @@ function createPropertyCard(p) {
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-1">
               <p class="font-semibold text-sm truncate">${escHtml(p.property_name)}</p>
-              ${isBuilding && p.is_developed ? '<span class="badge badge-xs badge-accent flex-shrink-0">開発</span>' : ''}
+              ${isBuilding && p.extra?.land_ownership ? `<span class="badge badge-xs badge-accent flex-shrink-0">${escHtml(p.extra.land_ownership)}</span>` : ''}
             </div>
             <p class="text-xs text-base-content/60 truncate">${escHtml(p.address)}</p>
             <div class="flex gap-1 mt-1 flex-wrap">

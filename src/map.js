@@ -1,7 +1,7 @@
 /**
  * map.js — Google Maps 初期化・操作
  */
-import { getCategoryColor, getCategoryIconKey } from './categories.js';
+import { getCategoryColor, getCategoryIconKey } from './categories.js?v=11';
 
 // 岐阜県関市の中心座標
 const SEKI_CENTER = { lat: 35.4943, lng: 136.9189 };
