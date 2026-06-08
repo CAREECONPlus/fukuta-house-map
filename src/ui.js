@@ -1,10 +1,10 @@
 /**
  * ui.js — UI共通処理（パネル開閉・イベント登録）
  */
-import { calcAge } from './map.js?v=9';
+import { calcAge } from './map.js?v=10';
 import { getMaintenanceByProperty, deleteMaintenance } from './maintenance.js';
 import { openGoogleMapsNav } from './routes.js';
-import { getChangeLog } from './properties.js?v=9';
+import { getChangeLog } from './properties.js?v=10';
 import { getLabel as getBrandLabel } from './propertyTypes.js';
 import { getCategoryLabel, getCategoryColor } from './categories.js';
 
@@ -14,8 +14,11 @@ import { getCategoryLabel, getCategoryColor } from './categories.js';
  */
 const EXTRA_FIELD_DISPLAY = {
   utility_pole: [
-    { key: 'pole_number', label: '電柱番号' },
-    { key: 'pole_type',   label: '種類' },
+    { key: 'pole_number',   label: '電柱番号' },
+    { key: 'power_company', label: '電力会社' },
+    { key: 'office',        label: '営業所' },
+    { key: 'pole_count',    label: '本数', suffix: ' 本' },
+    { key: 'stay_wire',     label: '支線' },
   ],
   retention_pond: [
     { key: 'area_m2',     label: '面積', suffix: ' m²' },

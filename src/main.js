@@ -1,9 +1,9 @@
 /**
  * main.js — アプリ初期化
  */
-import { initMap, getMap } from './map.js?v=9';
-import { renderPropertyList, applyFilterAndRender, addProperty, updateProperty, deleteProperty, setViewMode, exportFilteredCsv, getAllProperties, getSelectedIds, getFilteredIds, removeProperties } from './properties.js?v=9';
-import { setupUI } from './ui.js?v=9';
+import { initMap, getMap } from './map.js?v=10';
+import { renderPropertyList, applyFilterAndRender, addProperty, updateProperty, deleteProperty, setViewMode, exportFilteredCsv, getAllProperties, getSelectedIds, getFilteredIds, removeProperties } from './properties.js?v=10';
+import { setupUI } from './ui.js?v=10';
 import { addMaintenance } from './maintenance.js';
 import {
   isSupabaseConfigured,
@@ -35,13 +35,20 @@ import {
   updateCategory,
   removeCategory,
 } from './categories.js';
+import {
+  loadPoleOffices,
+  getPoleOffices,
+  onPoleOfficesChanged,
+  addPoleOffice,
+  removePoleOffice,
+} from './poleOffices.js';
 
 /**
  * カテゴリごとの extra フィールド定義
  * key は properties.extra (JSONB) のキー名
  */
 const CATEGORY_EXTRA_FIELDS = {
-  utility_pole:   ['pole_number', 'pole_type'],
+  utility_pole:   ['pole_number', 'power_company', 'office', 'pole_count', 'stay_wire'],
   retention_pond: ['area_m2', 'manager'],
   road:           ['road_name', 'width_m'],
 };
@@ -154,6 +161,12 @@ const DEMO_PROPERTIES = [
   document.getElementById('btn-manage-categories-form')?.addEventListener('click', () => {
     document.getElementById('modal-categories').showModal();
   });
+
+  // 電柱「営業所」マスタの読み込みと UI 配線
+  await loadPoleOffices();
+  _renderOfficeSelect();
+  onPoleOfficesChanged(() => _renderOfficeSelect());
+  _setupOfficesManager();
 
   setupUI(applyFilterAndRender, openEditForm, handleDelete, addMaintenance);
 
@@ -416,7 +429,18 @@ function openEditForm(property) {
   const extra = property.extra || {};
   (CATEGORY_EXTRA_FIELDS[category] || []).forEach((key) => {
     const el = form.querySelector(`[data-extra-key="${key}"]`);
-    if (el) el.value = extra[key] ?? '';
+    if (!el) return;
+    const val = extra[key] ?? '';
+    // select で保存済みの値が選択肢に無い場合（営業所がマスタから削除された等）は
+    // 一時的な option を補い、編集時に値が消えないようにする。
+    if (el.tagName === 'SELECT' && val !== '' &&
+        !Array.from(el.options).some((opt) => opt.value === String(val))) {
+      const opt = document.createElement('option');
+      opt.value = String(val);
+      opt.textContent = String(val);
+      el.appendChild(opt);
+    }
+    el.value = val;
   });
 
   updateCompletedAtPreview();
@@ -787,6 +811,78 @@ function _renderBrandSelects() {
       types.map((t) => `<option value="${t.code}">${escAttr(t.label)}</option>`).join('');
     if (prev && types.some((t) => t.code === prev)) filterSel.value = prev;
   }
+}
+
+/**
+ * 電柱フォームの「営業所」ドロップダウンを再描画する。
+ * 値は営業所ラベル文字列。選択中の値は可能な限り維持する。
+ */
+function _renderOfficeSelect() {
+  const sel = document.getElementById('form-office-select');
+  if (!sel) return;
+  const offices = getPoleOffices();
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">選択...</option>' +
+    offices.map((o) => `<option value="${escAttr(o.label)}">${escAttr(o.label)}</option>`).join('');
+  if (prev && offices.some((o) => o.label === prev)) sel.value = prev;
+}
+
+/**
+ * 営業所マスタ管理モーダルの配線
+ */
+function _setupOfficesManager() {
+  document.getElementById('btn-manage-offices')?.addEventListener('click', () => {
+    _renderOfficesList();
+    document.getElementById('modal-offices').showModal();
+  });
+
+  document.getElementById('form-add-office')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd    = new FormData(e.target);
+    const label = (fd.get('label') || '').toString().trim();
+    if (!label) return;
+    try {
+      await addPoleOffice(label);
+      e.target.reset();
+      _renderOfficesList();
+    } catch (err) {
+      alert('追加に失敗しました: ' + err.message);
+    }
+  });
+}
+
+function _renderOfficesList() {
+  const list = document.getElementById('offices-list');
+  if (!list) return;
+  const offices = getPoleOffices();
+  if (offices.length === 0) {
+    list.innerHTML = '<p class="text-xs text-base-content/40 py-3 text-center">営業所がありません</p>';
+    return;
+  }
+  list.innerHTML = offices.map((o) => `
+    <div class="flex items-center gap-2" data-office-id="${escAttr(o.id)}">
+      <span class="flex-1 text-sm">${escAttr(o.label)}</span>
+      <button type="button" data-action="delete" class="btn btn-xs btn-ghost text-error" title="削除する">
+        <i data-lucide="trash-2" class="w-3 h-3"></i>
+      </button>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('[data-office-id]').forEach((row) => {
+    const id = row.dataset.officeId;
+    row.querySelector('[data-action="delete"]').addEventListener('click', async () => {
+      const label = row.querySelector('span')?.textContent || '';
+      if (!window.confirm(`「${label}」を削除しますか？\n（既存物件の表示はそのまま残ります）`)) return;
+      try {
+        await removePoleOffice(id);
+        _renderOfficesList();
+      } catch (err) {
+        alert('削除に失敗しました: ' + err.message);
+      }
+    });
+  });
+
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 function escAttr(s) {

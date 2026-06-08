@@ -19,7 +19,7 @@ import { normalizeCategoryInput } from './categories.js';
  * key は properties.extra (JSONB) に格納される。
  */
 const CATEGORY_EXTRA_FIELD_KEYS = [
-  'pole_number',  'pole_type',
+  'pole_number',  'power_company', 'office', 'pole_count', 'stay_wire',
   'area_m2', 'manager',
   'road_name',    'width_m',
 ];
@@ -38,7 +38,10 @@ export const FIELD_DEFS = [
   { key: 'is_developed',  label: '自社開発物件 (住宅)', required: false, hint: '○ or true で自社開発扱い' },
   // ===== 電柱専用 =====
   { key: 'pole_number',   label: '電柱番号 (電柱)',     required: false, hint: '例：A123' },
-  { key: 'pole_type',     label: '電柱種類 (電柱)',     required: false, hint: '鉄塔 / コンクリート柱 / 木柱' },
+  { key: 'power_company', label: '電力会社 (電柱)',     required: false, hint: '中部電力 / NTT / その他' },
+  { key: 'office',        label: '営業所 (電柱)',       required: false, hint: '例：岐阜支社（管理画面で追加可）' },
+  { key: 'pole_count',    label: '本数 (電柱)',         required: false, hint: '例：1' },
+  { key: 'stay_wire',     label: '支線 (電柱)',         required: false, hint: '有 / 無' },
   // ===== 調整池専用 =====
   { key: 'area_m2',       label: '面積 (調整池, m²)',   required: false, hint: '例：800' },
   { key: 'manager',       label: '管理者 (調整池)',     required: false, hint: '例：岐阜県' },
@@ -61,7 +64,10 @@ const AUTO_MAP_KEYWORDS = {
   phone_number:  ['電話番号', '電話', 'TEL', 'tel', 'phone', 'phone_number', '連絡先'],
   is_developed:  ['自社開発', '開発物件', '自社', 'is_developed'],
   pole_number:   ['電柱番号', 'ポール番号', 'pole_number', 'pole_no'],
-  pole_type:     ['電柱種類', '電柱タイプ', 'pole_type'],
+  power_company: ['電力会社', '電力', '会社', 'power_company'],
+  office:        ['営業所', '支社', '営業所名', 'office'],
+  pole_count:    ['本数', '電柱本数', 'count', 'pole_count'],
+  stay_wire:     ['支線', '支線有無', 'stay_wire'],
   area_m2:       ['面積', '面積(m²)', '面積(m2)', 'area', 'area_m2'],
   manager:       ['管理者', '管理', 'manager'],
   road_name:     ['道路名', '路線名', 'road_name'],
