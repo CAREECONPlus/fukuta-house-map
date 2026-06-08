@@ -83,4 +83,4 @@ property_name,address,property_type,completed_at,person_in_charge,customer_type,
 
 ## 問い合わせ
 
-担当: 仲原氏（Claude Code サポート）
+担当: BRANU 株式会社 DXコンサルティング事業部 DXコンサルタント 仲原
