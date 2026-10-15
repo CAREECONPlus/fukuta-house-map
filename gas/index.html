@@ -754,6 +754,8 @@
 const MAPS_API_KEY  = '<?= apiKey ?>';
 const MAP_ID        = '<?= mapId ?>';
 const OFFICE_ORIGIN = '<?= officeOrigin ?>';
+// 利用者トークン（URL の ?t= で渡されたもの）。サーバー側の全API呼び出しに付けて送る
+const AUTH_TOKEN    = '<?= token ?>';
 
 let map, AdvancedMarker, Pin;
 let mapMarkers = [];
@@ -770,7 +772,8 @@ let importRows = null, importHeaders = [], importMode = 'properties', importCsvT
 const isMobile = () => window.matchMedia('(max-width: 640px)').matches;
 
 function gs(fn) {
-  const args = Array.prototype.slice.call(arguments, 1);
+  // 第1引数は常にトークン（Code.gs 側の api* 関数は token を先頭で受け取る）
+  const args = [AUTH_TOKEN].concat(Array.prototype.slice.call(arguments, 1));
   return new Promise((resolve, reject) => {
     const runner = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
     runner[fn].apply(runner, args);
