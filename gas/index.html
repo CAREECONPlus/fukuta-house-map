@@ -105,6 +105,21 @@
     @media (min-width: 641px) {
       #bottom-carousel { display: none; }
     }
+
+    /* 選択中ピンの強調（一覧・ピン・カルーセルから選んだ物件） */
+    .pin-wrap { transform-origin: 50% 100%; transition: transform 0.15s ease, filter 0.15s ease; }
+    .pin-wrap.pin-active {
+      transform: scale(1.45);
+      filter: drop-shadow(0 0 3px #ffffff) drop-shadow(0 0 6px rgba(37, 99, 235, 0.95));
+    }
+    .pin-wrap.pin-active.pin-bounce { animation: pin-bounce 0.5s ease-in-out 3; }
+    @keyframes pin-bounce {
+      0%, 100% { transform: scale(1.45) translateY(0); }
+      50%      { transform: scale(1.45) translateY(-12px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .pin-wrap.pin-active.pin-bounce { animation: none; }
+    }
   </style>
 </head>
 <body class="bg-base-200 min-h-screen flex flex-col">
@@ -767,6 +782,9 @@ let currentView = 'map';
 const selectedIds = new Set();
 let maintCache = {};
 let pinMap = null, pinMarker = null;
+let pinMapTypeId = loadPref('pinMapTypeId', 'roadmap');   // ピン調整地図の表示（地図／航空写真）
+const markerById = new Map();                              // 物件id → AdvancedMarker
+let highlightedId = null;                                  // 強調表示中のピン
 let importRows = null, importHeaders = [], importMode = 'properties', importCsvText = '';
 
 const isMobile = () => window.matchMedia('(max-width: 640px)').matches;
@@ -789,27 +807,45 @@ function escHtml(str) {
 
 function icons() { if (typeof lucide !== 'undefined') lucide.createIcons(); }
 
+// 端末ごとの表示設定（保存できない環境では既定値で動く）
+function loadPref(key, fallback) {
+  try { return localStorage.getItem('fhmap.' + key) || fallback; } catch (e) { return fallback; }
+}
+function savePref(key, value) {
+  try { localStorage.setItem('fhmap.' + key, value); } catch (e) { /* 保存できなくても動作に影響なし */ }
+}
+
 // ===== 築年数 =====
+// 施工完了年月 → 'YYYY-MM-DD'。解釈できない値は null
+// （以前は new Date() に任せていたため「Oct-20」が 2001年10月20日 と誤解釈され「20年以上」になっていた）
 function toDateStr(completed) {
   if (!completed) return null;
-  let s = String(completed).replace(/\//g, '-');
-  if (s.length === 7) s += '-01';
-  return s.substring(0, 10);
+  return parseFlexibleDate(completed);
 }
-function calcAgeYears(completed) {
+/** 経過年数（小数）。日付が無い・解釈できない場合は null */
+function ageYearsOf(completed) {
   const s = toDateStr(completed);
-  if (!s) return 0;
-  const d = new Date(s);
-  if (isNaN(d)) return 0;
+  if (!s) return null;
+  const d = new Date(s + 'T00:00:00');
+  if (isNaN(d)) return null;
   return (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
 }
+function calcAgeYears(completed) {
+  const a = ageYearsOf(completed);
+  return a === null ? 0 : a;
+}
+/** 経過年数（整数）。不明なら null */
+function ageInt(completed) {
+  const a = ageYearsOf(completed);
+  return a === null ? null : Math.floor(a);
+}
 function calcAge(completed) {
-  if (!completed) return '不明';
-  return Math.floor(calcAgeYears(completed)) + '年';
+  const n = ageInt(completed);
+  return n === null ? '不明' : n + '年';
 }
 function getMarkerColor(completed) {
-  if (!completed) return '#9CA3AF';
-  const a = calcAgeYears(completed);
+  const a = ageYearsOf(completed);
+  if (a === null) return '#9CA3AF';   // 未入力・解釈できない日付はグレー（不明）
   if (a < 5)  return '#22C55E';
   if (a < 10) return '#FACC15';
   if (a < 20) return '#F97316';
@@ -817,12 +853,13 @@ function getMarkerColor(completed) {
 }
 function fmtYm(completed) {
   const s = toDateStr(completed);
-  if (!s) return '';
+  if (!s) return String(completed || '');   // 解釈できない値はそのまま見せて、直すきっかけにする
   const m = s.match(/^(\d{4})-(\d{2})/);
   return m ? m[1] + '年' + Number(m[2]) + '月' : String(completed);
 }
 
 // ===== 柔軟日付パース（utils.js 移植） =====
+const EN_MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 const ERA_MAP = { '令和': 2018, 'R': 2018, '平成': 1988, 'H': 1988, '昭和': 1925, 'S': 1925, '大正': 1911, 'T': 1911, '明治': 1867, 'M': 1867 };
 function parseFlexibleDate(input) {
   if (!input) return null;
@@ -837,11 +874,24 @@ function parseFlexibleDate(input) {
     month = era[3] ? Number(era[3]) : 1;
     day   = era[4] ? Number(era[4]) : 1;
   } else {
-    const m = s.match(/^(\d{4})[\-\/\.年]?(\d{1,2})?[月\-\/\.]?(\d{1,2})?日?$/);
-    if (!m) return null;
-    year  = Number(m[1]);
-    month = m[2] ? Number(m[2]) : 1;
-    day   = m[3] ? Number(m[3]) : 1;
+    // Excel が「2020/10」を自動変換した「Oct-20」「Oct-2020」形式（英字月-年）
+    const en = s.match(/^([A-Za-z]{3,9})[\-\/\.,]?(\d{2}|\d{4})$/);
+    if (en) {
+      month = EN_MONTHS[en[1].substring(0, 3).toLowerCase()];
+      if (!month) return null;
+      year = Number(en[2]);
+      if (en[2].length === 2) {
+        const cur = new Date().getFullYear() % 100;
+        year += (year <= cur ? 2000 : 1900);   // 「Oct-20」→2020年、「Oct-95」→1995年
+      }
+      day = 1;
+    } else {
+      const m = s.match(/^(\d{4})[\-\/\.年]?(\d{1,2})?[月\-\/\.]?(\d{1,2})?日?$/);
+      if (!m) return null;
+      year  = Number(m[1]);
+      month = m[2] ? Number(m[2]) : 1;
+      day   = m[3] ? Number(m[3]) : 1;
+    }
   }
   if (!Number.isFinite(year) || year < 1800 || year > 2200) return null;
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
@@ -1162,7 +1212,8 @@ function applyFilterAndRender() {
         if (!phone.includes(phoneVal)) return false;
       }
       if (ageMin !== '' || ageMax !== '') {
-        const age = calcAgeYears(p.completed_at);
+        const age = ageYearsOf(p.completed_at);
+        if (age === null) return false;
         if (ageMin !== '' && age < Number(ageMin)) return false;
         if (ageMax !== '' && age > Number(ageMax)) return false;
       }
@@ -1186,10 +1237,10 @@ function applyFilterAndRender() {
           if (!property) return;
           if (isMobile()) {
             document.getElementById('side-panel').classList.add('panel-collapsed');
-            setActiveProperty(property.id, { panMap: true, scrollCarousel: true });
+            setActiveProperty(property.id, { panMap: true, scrollCarousel: true, minZoom: 15 });
           } else {
             showDetailPanel(property);
-            if (property.latitude && property.longitude) panTo(property.latitude, property.longitude);
+            if (property.latitude && property.longitude) panTo(property.latitude, property.longitude, 15);
           }
         });
       });
@@ -1209,16 +1260,18 @@ function applyFilterAndRender() {
   icons();
 }
 
-function panTo(lat, lng, zoom) {
+// 中心を移動する。拡大率は変えない（minZoom を渡したときだけ、それより引いていれば拡大する）
+function panTo(lat, lng, minZoom) {
   if (!map) return;
   map.panTo({ lat: Number(lat), lng: Number(lng) });
-  map.setZoom(zoom || 15);
+  if (minZoom && (map.getZoom() || 0) < minZoom) map.setZoom(minZoom);
 }
 
 // ===== マーカー（map.js 移植：住宅=築年数色 / 他=カテゴリバッジ） =====
 function renderMarkers(list) {
   mapMarkers.forEach(m => m.map = null);
   mapMarkers = [];
+  markerById.clear();
   if (!AdvancedMarker || !Pin) return;
 
   list.forEach(property => {
@@ -1235,9 +1288,13 @@ function renderMarkers(list) {
     } else {
       content = buildCategoryMarker(category);
     }
+    // 強調表示（拡大・跳ねる）用に外枠で包む
+    const wrap = document.createElement('div');
+    wrap.className = 'pin-wrap';
+    wrap.appendChild(content);
     const marker = new AdvancedMarker({
       position: { lat: Number(property.latitude), lng: Number(property.longitude) },
-      map, title: property.property_name, content,
+      map, title: property.property_name, content: wrap,
     });
     marker.addListener('click', () => {
       if (isMobile()) {
@@ -1248,7 +1305,34 @@ function renderMarkers(list) {
       }
     });
     mapMarkers.push(marker);
+    markerById.set(property.id, marker);
   });
+
+  // 再描画（絞り込み変更など）後も強調を引き継ぐ
+  if (highlightedId) highlightMarker(highlightedId);
+}
+
+/** 指定した物件のピンを強調する（null で解除）。bounce: true で数回跳ねさせる */
+function highlightMarker(id, opts) {
+  opts = opts || {};
+  if (highlightedId && highlightedId !== id) {
+    const prev = markerById.get(highlightedId);
+    if (prev) {
+      prev.zIndex = null;
+      prev.content.classList.remove('pin-active', 'pin-bounce');
+    }
+  }
+  highlightedId = id || null;
+  if (!highlightedId) return;
+  const m = markerById.get(highlightedId);
+  if (!m) return;
+  m.zIndex = 10000;   // 重なったピンの一番手前に出す
+  m.content.classList.add('pin-active');
+  if (opts.bounce) {
+    m.content.classList.remove('pin-bounce');
+    void m.content.offsetWidth;   // アニメーションを最初から再生させる
+    m.content.classList.add('pin-bounce');
+  }
 }
 
 function buildCategoryMarker(categoryCode) {
@@ -1266,6 +1350,16 @@ function buildCategoryMarker(categoryCode) {
 }
 
 // ===== サイドバー物件カード =====
+/** 一覧（表）の物件名の下に出す区分バッジ：物件タイプ ＋ 土地区分 */
+function rowBadges(p) {
+  const isBuilding = (p.category || 'building') === 'building';
+  const tLbl = isBuilding ? typeLabel(p.building_type) : '';
+  const parts = [];
+  if (tLbl) parts.push('<span class="badge badge-xs border-0 text-white" style="background:' + typeColor(p.building_type) + '">' + escHtml(tLbl) + '</span>');
+  if (p.land_ownership) parts.push('<span class="badge badge-xs badge-accent">' + escHtml(p.land_ownership) + '</span>');
+  return parts.length ? '<div class="flex flex-wrap gap-1 mt-0.5">' + parts.join('') + '</div>' : '';
+}
+
 function createPropertyCard(p) {
   const category      = p.category || 'building';
   const categoryLabel = getCategoryLabel(category);
@@ -1276,11 +1370,11 @@ function createPropertyCard(p) {
   const brandClr = isBuilding ? typeColor(p.brand) : '';
   const typeLbl  = isBuilding ? typeLabel(p.building_type) : '';
   const typeClr  = isBuilding ? typeColor(p.building_type) : '';
-  const ageText  = (isBuilding && p.completed_at) ? '築' + Math.floor(calcAgeYears(p.completed_at)) + '年' : '';
+  const ageN     = isBuilding ? ageInt(p.completed_at) : null;
+  const ageText  = ageN !== null ? '築' + ageN + '年' : '';
 
   const buildingBadges = isBuilding ? (
     (brandLbl ? '<span class="badge badge-sm border-0 text-white" style="background:' + brandClr + '">' + escHtml(brandLbl) + '</span>' : '') +
-    (typeLbl ? '<span class="badge badge-sm border-0 text-white" style="background:' + typeClr + '">' + escHtml(typeLbl) + '</span>' : '') +
     '<span class="badge badge-sm badge-ghost">' + (ageText || '不明') + '</span>' +
     (p.phone_number ? '<span class="badge badge-sm badge-ghost">' + escHtml(p.phone_number) + '</span>' : '')
   ) : '';
@@ -1290,6 +1384,7 @@ function createPropertyCard(p) {
     '<span class="mt-1 inline-block w-3 h-3 rounded-full flex-shrink-0" style="background:' + dotColor + '"></span>' +
     '<div class="flex-1 min-w-0">' +
     '<div class="flex items-center gap-1"><p class="font-semibold text-sm truncate">' + escHtml(p.property_name) + '</p>' +
+    (typeLbl ? '<span class="badge badge-xs border-0 text-white flex-shrink-0" style="background:' + typeClr + '">' + escHtml(typeLbl) + '</span>' : '') +
     (isBuilding && p.land_ownership ? '<span class="badge badge-xs badge-accent flex-shrink-0">' + escHtml(p.land_ownership) + '</span>' : '') +
     '</div>' +
     '<p class="text-xs text-base-content/60 truncate">' + escHtml(p.address) + '</p>' +
@@ -1308,7 +1403,7 @@ function renderBottomCarousel(list) {
   track.querySelectorAll('[data-carousel-id]').forEach(el => {
     el.addEventListener('click', e => {
       if (e.target.closest('[data-carousel-detail]')) return;
-      setActiveProperty(el.dataset.carouselId, { panMap: true, scrollCarousel: false });
+      setActiveProperty(el.dataset.carouselId, { panMap: true, scrollCarousel: false, minZoom: 15 });
     });
   });
   track.querySelectorAll('[data-carousel-detail]').forEach(btn => {
@@ -1331,7 +1426,8 @@ function createCarouselCard(p) {
     const brandLbl = typeLabel(p.brand);
     const typeLbl  = typeLabel(p.building_type);
     const land     = p.land_ownership || '';
-    const ageText  = p.completed_at ? '築' + Math.floor(calcAgeYears(p.completed_at)) + '年' : '';
+    const ageN     = ageInt(p.completed_at);
+    const ageText  = ageN !== null ? '築' + ageN + '年' : '';
     const phone    = p.phone_number || '';
     infoLines =
       (brandLbl ? '<div class="text-xs truncate"><span class="text-base-content/50">ブランド: </span>' + escHtml(brandLbl) + '</div>' : '') +
@@ -1388,8 +1484,9 @@ function setActiveProperty(id, opts) {
     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
   }
   if (opts.panMap && property && property.latitude && property.longitude) {
-    panTo(property.latitude, property.longitude);
+    panTo(property.latitude, property.longitude, opts.minZoom);
   }
+  highlightMarker(id, { bounce: !!opts.panMap });
 }
 
 // ===== ビュー切替 =====
@@ -1448,14 +1545,14 @@ function renderListView(list) {
     '</tr></thead><tbody>' +
     list.map(p => {
       const completed = p.completed_at ? fmtYm(p.completed_at) : '—';
-      const age = p.completed_at ? Math.floor(calcAgeYears(p.completed_at)) + '年' : '不明';
+      const age = calcAge(p.completed_at);
       const color = getMarkerColor(p.completed_at);
       return '<tr class="hover:bg-base-200 transition-colors" data-list-id="' + p.id + '">' +
         '<td class="w-8"><input type="checkbox" class="checkbox checkbox-xs list-row-check" data-id="' + p.id + '" ' + (selectedIds.has(p.id) ? 'checked' : '') + ' /></td>' +
         '<td class="cursor-pointer" data-role="open"><div class="flex items-center gap-2">' +
         '<span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:' + color + '"></span>' +
         '<div class="min-w-0"><p class="font-medium text-sm truncate max-w-[140px]">' + escHtml(p.property_name) + '</p>' +
-        (p.land_ownership ? '<span class="badge badge-xs badge-accent">' + escHtml(p.land_ownership) + '</span>' : '') +
+        rowBadges(p) +
         '</div></div></td>' +
         '<td class="hidden lg:table-cell text-xs text-base-content/70 max-w-[220px] cursor-pointer" data-role="open"><span class="block truncate">' + escHtml(p.address) + '</span></td>' +
         '<td class="text-xs cursor-pointer" data-role="open">' + escHtml(typeLabel(p.brand)) + '</td>' +
@@ -1544,6 +1641,7 @@ function showDetailPanel(property) {
   const dp = document.getElementById('detail-panel');
   dp.classList.remove('detail-collapsed');
   dp.classList.remove('translate-x-full');
+  highlightMarker(property.id, { bounce: true });
   icons();
 }
 
@@ -1551,6 +1649,8 @@ function hideDetailPanel() {
   document.getElementById('detail-panel').classList.add('translate-x-full');
   document.getElementById('route-info').classList.add('hidden');
   currentProperty = null;
+  // スマホでカルーセル選択中ならその物件の強調は残す
+  highlightMarker(isMobile() ? activeId : null);
 }
 
 function detailRow(label, value) {
@@ -1913,7 +2013,19 @@ async function openPinAdjust() {
   setTimeout(() => {
     pinMap = new google.maps.Map(document.getElementById('pin-adjust-map'), {
       center: { lat, lng }, zoom: 17, mapId: MAP_ID || undefined,
-      gestureHandling: 'greedy', mapTypeControl: false, streetViewControl: false,
+      mapTypeId: pinMapTypeId,
+      gestureHandling: 'greedy', streetViewControl: false,
+      // 地図／航空写真（ラベル付き）を切り替えられるようにする
+      mapTypeControl: true,
+      mapTypeControlOptions: {
+        style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
+        position: google.maps.ControlPosition.TOP_LEFT,
+        mapTypeIds: ['roadmap', 'hybrid'],
+      },
+    });
+    pinMap.addListener('maptypeid_changed', () => {
+      pinMapTypeId = pinMap.getMapTypeId();
+      savePref('pinMapTypeId', pinMapTypeId);   // 次に開いたときも同じ表示で始める
     });
     pinMarker = new AdvancedMarker({ map: pinMap, position: { lat, lng }, gmpDraggable: true });
     updatePinCoords(lat, lng);
@@ -2140,8 +2252,8 @@ function exportFilteredCsv() {
       isBuilding ? typeLabel(p.brand) : '',
       isBuilding ? typeLabel(p.building_type) : '',
       isBuilding ? (p.land_ownership || '') : '',
-      isBuilding && p.completed_at ? String(toDateStr(p.completed_at)).substring(0, 7) : '',
-      isBuilding && p.completed_at ? String(Math.floor(calcAgeYears(p.completed_at))) : '',
+      isBuilding && p.completed_at ? (toDateStr(p.completed_at) || String(p.completed_at)).substring(0, 7) : '',
+      isBuilding && ageInt(p.completed_at) !== null ? String(ageInt(p.completed_at)) : '',
       isBuilding ? (p.phone_number || '') : '',
       p.notes || '',
     ];
@@ -2170,7 +2282,7 @@ const FIELD_DEFS = [
   { key: 'brand',          label: 'ブランド',     required: false, hint: 'フクタハウス 等' },
   { key: 'building_type',  label: '物件タイプ',   required: false, hint: '注文住宅 等' },
   { key: 'land_ownership', label: '土地区分',     required: false, hint: '自社土地 等' },
-  { key: 'completed_at',   label: '施工完了年月', required: false, hint: '例: 2020/10' },
+  { key: 'completed_at',   label: '施工完了年月', required: false, hint: '例: 2020年10月' },
   { key: 'phone_number',   label: '電話番号',     required: false, hint: '' },
   { key: 'notes',          label: '備考',         required: false, hint: '' },
   { key: 'latitude',       label: '緯度',         required: false, hint: '無ければ住所から自動変換' },
@@ -2230,7 +2342,7 @@ function applyImportMode(mode) {
 function downloadSampleCsv() {
   const sample = importMode === 'maintenance'
     ? '物件名,住所,点検日,種別,内容・結果,次回推奨日,担当者,備考\nサンプル邸,岐阜県関市若草通4丁目,2024/05/01,定期点検,異常なし,2025/05/01,田中,\n'
-    : 'カテゴリ,物件名,住所,ブランド,物件タイプ,土地区分,施工完了年月,電話番号,備考\n住宅,サンプル邸,岐阜県関市若草通4丁目,フクタハウス,注文住宅,施主所有土地,2020/10,0575-00-0000,サンプルです\n';
+    : 'カテゴリ,物件名,住所,ブランド,物件タイプ,土地区分,施工完了年月,電話番号,備考\n住宅,サンプル邸,岐阜県関市若草通4丁目,フクタハウス,注文住宅,施主所有土地,2020年10月,0575-00-0000,サンプルです\n';
   const blob = new Blob(['\uFEFF' + sample], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -2318,6 +2430,7 @@ async function runImport() {
   const norm = normalizeStr;
   let ok = 0, skip = 0, fail = 0;
   const failMsgs = [];
+  const warnMsgs = [];
 
   for (let i = 0; i < importRows.length; i++) {
     const row = importRows[i];
@@ -2330,13 +2443,18 @@ async function runImport() {
     if (importMode === 'properties') {
       if (properties.some(p => norm(p.property_name) === norm(name) && norm(p.address) === norm(address))) { skip++; continue; }
       const completedRaw = get(row, 'completed_at');
+      const completedParsed = completedRaw ? parseFlexibleDate(completedRaw) : '';
+      if (completedRaw && !completedParsed) {
+        // 解釈できない日付は登録しない（誤った築年数で色分けされるのを防ぐ）
+        warnMsgs.push((i + 2) + '行目「' + name + '」: 施工完了年月「' + completedRaw + '」を解釈できないため空欄で登録');
+      }
       const payload = {
         property_name: name, address: address,
         category: categoryCodeOf(get(row, 'category')) || 'building',
         brand: typeCodeOf(brands, get(row, 'brand')),
         building_type: typeCodeOf(buildingTypes, get(row, 'building_type')),
         land_ownership: get(row, 'land_ownership'),
-        completed_at: completedRaw ? (parseFlexibleDate(completedRaw) || completedRaw) : '',
+        completed_at: completedParsed || '',
         phone_number: get(row, 'phone_number'),
         notes: get(row, 'notes'),
         latitude: get(row, 'latitude'), longitude: get(row, 'longitude'),
@@ -2373,7 +2491,9 @@ async function runImport() {
     '<span class="text-success">✅ 成功 ' + ok + ' 件</span>' +
     (skip > 0 ? '　<span class="text-warning">⏭ 完全重複スキップ ' + skip + ' 件</span>' : '') +
     (fail > 0 ? '　<span class="text-error">❌ 失敗 ' + fail + ' 件</span>' +
-      '<div class="text-xs text-error text-left mt-2">' + failMsgs.slice(0, 10).map(escHtml).join('<br>') + '</div>' : '');
+      '<div class="text-xs text-error text-left mt-2">' + failMsgs.slice(0, 10).map(escHtml).join('<br>') + '</div>' : '') +
+    (warnMsgs.length > 0 ? '<div class="text-xs text-warning text-left mt-2">⚠ 要確認 ' + warnMsgs.length + ' 件（物件は登録済み。編集画面から施工完了年月を入力してください）<br>' +
+      warnMsgs.slice(0, 10).map(escHtml).join('<br>') + (warnMsgs.length > 10 ? '<br>…ほか ' + (warnMsgs.length - 10) + ' 件' : '') + '</div>' : '');
   btnCancel.disabled = false;
   btnCancel.textContent = '閉じる';
 }
