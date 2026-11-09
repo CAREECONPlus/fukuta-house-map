@@ -6,18 +6,14 @@
  *   - このスクリプトをウェブアプリとしてデプロイして公開
  *
  * デプロイ設定：
- *   実行ユーザー   : 自分（スクリプト所有者）
- *   アクセスできる人: Google アカウントを持つ全員（Googleアカウントの無い人も使うなら「全員」）
+ *   次のユーザーとして実行: ウェブアプリにアクセスしているユーザー
+ *   アクセスできるユーザー: Google アカウントを持つ全員
  *
- * 認証方式（トークン方式）：
- *   「ログイン許可」シートの各行に発行した トークン を URL に付けた
- *   `.../exec?t=トークン` を利用者ごとに配布する。トークンが一致した人だけ利用可。
- *   ※ Session.getActiveUser() は「実行ユーザー＝自分」かつ Workspace 外では
- *     メールアドレスが取れない（空文字になる）ため、ログイン認証には使えない。
- *     オーナー本人など、メールが取れる場合はメールでの照合も併用する。
- *
- * Phase 1 からの変更：API追加のみ（シート構成は同じ。setup() 再実行は不要）
- * トークン方式への変更：「ログイン許可」にトークン列が増えるため setup() を再実行する
+ * 認証方式（スプレッドシート共有方式）：
+ *   アプリは利用者本人の Google アカウントの権限で動く。
+ *   このスプレッドシートを「編集者」として共有された人だけが使える
+ *   （共有されていない人はシートを読めないため、画面もデータも出ない）。
+ *   利用者の追加・停止は、スプレッドシートの「共有」で行う。URL は全員共通の1つ。
  */
 
 // ===== シート名（変更しないでください） ======================================
@@ -27,7 +23,6 @@ const SHEETS = {
   TYPES:       '種別マスタ',
   CATEGORIES:  'カテゴリマスタ',
   OFFICES:     '営業所マスタ',
-  ALLOWLIST:   'ログイン許可',
   CONFIG:      '設定',
 };
 
@@ -38,10 +33,7 @@ const PROP_COLS = [
   '追加情報', '作成日時', '更新日時',
 ];
 
-// ログイン許可シートの列順
-const ALLOW_COLS = ['メールアドレス', '氏名メモ', '追加日', 'トークン', '配布用URL'];
-const ALLOW_COL_TOKEN = 4;   // D列
-const ALLOW_COL_URL   = 5;   // E列
+const PHONE_COL = PROP_COLS.indexOf('電話番号') + 1;   // I列
 
 // 削除できない標準カテゴリ
 const BUILTIN_CATEGORIES = ['building', 'utility_pole', 'retention_pond', 'road'];
@@ -62,9 +54,6 @@ function setup() {
     ['id', 'コード', 'ラベル', '色', 'アイコン', '有効']);
   const offices = _ensureSheet(ss, SHEETS.OFFICES,
     ['id', 'ラベル', '有効']);
-  const allow = _ensureSheet(ss, SHEETS.ALLOWLIST, ALLOW_COLS);
-  _ensureColumns(allow, ALLOW_COLS);
-  allow.getRange(2, ALLOW_COL_TOKEN, Math.max(allow.getMaxRows() - 1, 1), 1).setNumberFormat('@'); // トークンを文字列として保持
   const config = _ensureSheet(ss, SHEETS.CONFIG,
     ['キー', '値', '説明']);
 
@@ -100,82 +89,11 @@ function setup() {
       ['GOOGLE_MAPS_MAP_ID',  '', 'Google Maps の Map ID を貼り付け'],
     ]);
   }
-  _ensureConfigKey(config, 'WEB_APP_URL', 'デプロイしたウェブアプリの URL（…/exec）。配布用URLの生成に使う');
-  if (allow.getLastRow() === 1) {
-    const me = Session.getActiveUser().getEmail();
-    if (me) allow.getRange(2, 1, 1, 3).setValues([[me, '管理者（初期登録）', new Date()]]);
-  }
-  issueTokens();
+  // 電話番号列は文字列として保持する（先頭の0が消えないように）
+  const props = ss.getSheetByName(SHEETS.PROPERTIES);
+  props.getRange(2, PHONE_COL, Math.max(props.getMaxRows() - 1, 1), 1).setNumberFormat('@');
 
   SpreadsheetApp.flush();
-}
-
-/** スプレッドシートを開いたときにメニューを追加する（シンプルトリガー） */
-function onOpen() {
-  SpreadsheetApp.getUi().createMenu('物件マップ')
-    .addItem('トークンを発行（未発行の行）', 'issueTokens')
-    .addToUi();
-}
-
-/**
- * 「ログイン許可」シートで、名前かメールが入っていてトークンが空の行にトークンを発行し、
- * 「設定」シートの WEB_APP_URL が入っていれば配布用URLも書き込む。
- * 既に発行済みの行は変更しない（URLだけは最新の WEB_APP_URL で更新する）。
- */
-function issueTokens() {
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.ALLOWLIST);
-  if (!sh) throw new Error('シート「' + SHEETS.ALLOWLIST + '」がありません。setup() を実行してください');
-  _ensureColumns(sh, ALLOW_COLS);
-  const last = sh.getLastRow();
-  if (last < 2) return;
-
-  const baseUrl = (_getConfig().WEB_APP_URL || '').replace(/[?#].*$/, '');
-  const range = sh.getRange(2, 1, last - 1, ALLOW_COLS.length);
-  const rows = range.getValues();
-  let issued = 0;
-  rows.forEach(function (r) {
-    const hasPerson = String(r[0]).trim() || String(r[1]).trim();
-    if (!hasPerson) return;
-    let token = String(r[ALLOW_COL_TOKEN - 1]).trim();
-    if (!token) {
-      token = _newToken();
-      r[ALLOW_COL_TOKEN - 1] = token;
-      issued++;
-    }
-    r[ALLOW_COL_URL - 1] = baseUrl ? baseUrl + '?t=' + token : '';
-  });
-  sh.getRange(2, ALLOW_COL_TOKEN, last - 1, 1).setNumberFormat('@');
-  range.setValues(rows);
-  SpreadsheetApp.flush();
-  return issued;
-}
-
-function _newToken() {
-  // 32文字の16進数。先頭を英字にして、表計算ソフトに数値と誤認されないようにする
-  const hex = Utilities.getUuid().replace(/-/g, '');
-  return 'k' + hex.substring(1);
-}
-
-/** ヘッダー行に無い列名を右側に追加する（既存シートの列追加用） */
-function _ensureColumns(sh, headers) {
-  const width = Math.max(sh.getLastColumn(), 1);
-  const current = sh.getRange(1, 1, 1, width).getValues()[0].map(String);
-  headers.forEach(function (h, i) {
-    if (current.indexOf(h) === -1) {
-      const col = i + 1;
-      sh.getRange(1, col).setValue(h).setFontWeight('bold').setBackground('#f3f4f6');
-    }
-  });
-}
-
-/** 「設定」シートにキーが無ければ行を追加する */
-function _ensureConfigKey(sh, key, desc) {
-  const last = sh.getLastRow();
-  if (last >= 2) {
-    const keys = sh.getRange(2, 1, last - 1, 1).getValues().map(function (r) { return String(r[0]).trim(); });
-    if (keys.indexOf(key) !== -1) return;
-  }
-  sh.appendRow([key, '', desc]);
 }
 
 function _ensureSheet(ss, name, headers) {
@@ -194,61 +112,30 @@ function _ensureSheet(ss, name, headers) {
 // =============================================================================
 
 function doGet(e) {
-  const token = (e && e.parameter && e.parameter.t) ? String(e.parameter.t).trim() : '';
   const email = Session.getActiveUser().getEmail();
-  const user  = _resolveUser(token, email);
-
-  if (!user) {
+  let config;
+  try {
+    _assertAllowed();
+    config = _getConfig();
+  } catch (err) {
     return HtmlService.createHtmlOutput(
       '<div style="font-family:sans-serif;max-width:480px;margin:80px auto;text-align:center;">' +
       '<h2>利用権限がありません</h2>' +
-      '<p>このアプリは、管理者から配布された専用URLからのみ利用できます。</p>' +
-      '<p style="color:#888;font-size:13px;">' +
-      (token
-        ? 'お手元のURLは無効になっているか、誤っている可能性があります。'
-        : 'URLに利用者トークン（<code>?t=…</code>）が付いていません。') +
-      '</p>' +
+      '<p>このアプリは、物件マップのスプレッドシートを共有されている人だけが利用できます。</p>' +
       (email ? '<p style="color:#888;font-size:13px;">あなたのアカウント: ' + _esc(email) + '</p>' : '') +
-      '<p style="color:#888;font-size:13px;">管理者に配布用URLを確認してください。</p></div>'
+      '<p style="color:#888;font-size:13px;">管理者に、このアカウントへスプレッドシートを「編集者」で共有してもらってください。</p></div>'
     ).setTitle('利用権限がありません');
   }
 
-  const config = _getConfig();
   const t = HtmlService.createTemplateFromFile('index');
   t.apiKey    = config.GOOGLE_MAPS_API_KEY || '';
   t.mapId     = config.GOOGLE_MAPS_MAP_ID  || '';
   // 経路案内の「本社から」の出発地（設定シートに OFFICE_ORIGIN 行を足せば変更可）
   t.officeOrigin = config.OFFICE_ORIGIN || '35.485869,136.897825';
-  t.token     = user.token || '';
-  t.userEmail = user.email || '';
-  t.userLabel = user.label || user.email || '';
+  t.userEmail = email || '';
   return t.evaluate()
     .setTitle('フクタハウス 施工物件マップ')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
-}
-
-/**
- * 「ログイン許可」シートから利用者を特定する。
- * 1) トークンが一致する行  2) （メールが取れた場合のみ）メールが一致する行
- * のどちらかに該当すれば { email, label, token } を返し、該当しなければ null。
- */
-function _resolveUser(token, email) {
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.ALLOWLIST);
-  if (!sh || sh.getLastRow() < 2) return null;
-  const rows = sh.getRange(2, 1, sh.getLastRow() - 1, ALLOW_COLS.length).getValues();
-  const tok = String(token || '').trim();
-  const em  = String(email || '').trim().toLowerCase();
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    const rowToken = String(r[ALLOW_COL_TOKEN - 1]).trim();
-    const rowEmail = String(r[0]).trim().toLowerCase();
-    const hitToken = tok && rowToken && rowToken === tok;
-    const hitEmail = em  && rowEmail && rowEmail === em;
-    if (hitToken || hitEmail) {
-      return { email: String(r[0]).trim(), label: String(r[1]).trim(), token: rowToken };
-    }
-  }
-  return null;
 }
 
 function _getConfig() {
@@ -266,8 +153,8 @@ function _getConfig() {
 // =============================================================================
 
 /** 初期データ一括取得 */
-function apiGetInitialData(token) {
-  _assertAllowed(token);
+function apiGetInitialData() {
+  _assertAllowed();
   return {
     properties: _readProperties(),
     categories: _readMaster(SHEETS.CATEGORIES, ['id', 'code', 'label', 'color', 'icon', 'active']),
@@ -277,16 +164,58 @@ function apiGetInitialData(token) {
 }
 
 /** 住所→座標（ピン調整の初期位置用） */
-function apiGeocode(token, address) {
-  _assertAllowed(token);
+function apiGeocode(address) {
+  _assertAllowed();
   return _geocode(address);
 }
 
 // ---- 物件 -------------------------------------------------------------------
 
-function apiAddProperty(token, data) {
-  _assertAllowed(token);
+function apiAddProperty(data) {
+  _assertAllowed();
   return _withLock(function () {
+    const row = _buildNewProp(data);
+    _appendProps([row]);
+    return _normalizeProp(row);
+  });
+}
+
+/**
+ * CSV取込用：複数物件をまとめて追加する（1回の通信・1回の書き込み）。
+ * 行ごとに成否を返す。住所検索の失敗（上限超過を含む）はその行だけ失敗にする。
+ */
+function apiAddProperties(list) {
+  _assertAllowed();
+  if (!list || !list.length) return [];
+  return _withLock(function () {
+    const results = [], rows = [];
+    list.forEach(function (data) {
+      try {
+        const row = _buildNewProp(data);
+        rows.push(row);
+        results.push({ ok: true, property: row });
+      } catch (e) {
+        results.push({ ok: false, error: String(e && e.message || e) });
+      }
+    });
+    _appendProps(rows);
+    return results.map(function (r) {
+      return r.ok ? { ok: true, property: _normalizeProp(r.property) } : r;
+    });
+  });
+}
+
+function _appendProps(rows) {
+  if (!rows.length) return;
+  const sh = _sheet(SHEETS.PROPERTIES);
+  const start = sh.getLastRow() + 1;
+  const need = start + rows.length - 1 - sh.getMaxRows();
+  if (need > 0) sh.insertRowsAfter(sh.getMaxRows(), need);
+  sh.getRange(start, PHONE_COL, rows.length, 1).setNumberFormat('@');
+  sh.getRange(start, 1, rows.length, PROP_COLS.length).setValues(rows.map(_propToRow));
+}
+
+function _buildNewProp(data) {
     if (!data.property_name || !data.address) throw new Error('物件名と住所は必須です');
     let lat = _num(data.latitude), lng = _num(data.longitude);
     if (lat === '' || lng === '') {
@@ -310,13 +239,11 @@ function apiAddProperty(token, data) {
       extra: JSON.stringify(data.extra || {}),
       created_at: now, updated_at: now,
     };
-    _sheet(SHEETS.PROPERTIES).appendRow(_propToRow(row));
-    return _normalizeProp(row);
-  });
+    return row;
 }
 
-function apiUpdateProperty(token, id, data) {
-  _assertAllowed(token);
+function apiUpdateProperty(id, data) {
+  _assertAllowed();
   return _withLock(function () {
     const sh = _sheet(SHEETS.PROPERTIES);
     const rowIndex = _findRowById(sh, id);
@@ -344,25 +271,38 @@ function apiUpdateProperty(token, id, data) {
       extra: JSON.stringify(data.extra !== undefined ? data.extra : (existing.extra || {})),
       created_at: existing.created_at, updated_at: new Date(),
     };
+    sh.getRange(rowIndex, PHONE_COL).setNumberFormat('@');
     sh.getRange(rowIndex, 1, 1, PROP_COLS.length).setValues([_propToRow(row)]);
     return _normalizeProp(row);
   });
 }
 
-function apiDeleteProperty(token, id) {
-  _assertAllowed(token);
+function apiDeleteProperty(id) {
+  _assertAllowed();
   return _withLock(function () {
     const sh = _sheet(SHEETS.PROPERTIES);
     const rowIndex = _findRowById(sh, id);
     if (rowIndex === -1) throw new Error('対象の物件が見つかりません');
     sh.deleteRow(rowIndex);
+    const idSet = {}; idSet[String(id)] = true;
+    _deleteMaintenanceOf(idSet);
     return { ok: true };
   });
 }
 
+/** 削除した物件の点検履歴も消す（孤立データを残さない） */
+function _deleteMaintenanceOf(idSet) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.MAINTENANCE);
+  if (!sh || sh.getLastRow() < 2) return;
+  const pids = sh.getRange(2, 2, sh.getLastRow() - 1, 1).getValues();
+  for (let i = pids.length - 1; i >= 0; i--) {
+    if (idSet[String(pids[i][0])]) sh.deleteRow(i + 2);
+  }
+}
+
 /** 複数物件の一括削除（リストビューの選択削除用） */
-function apiDeleteProperties(token, ids) {
-  _assertAllowed(token);
+function apiDeleteProperties(ids) {
+  _assertAllowed();
   if (!ids || !ids.length) return { ok: true, deleted: 0 };
   return _withLock(function () {
     const sh = _sheet(SHEETS.PROPERTIES);
@@ -376,14 +316,15 @@ function apiDeleteProperties(token, ids) {
     }
     // 下の行から消す（行番号ずれ防止）
     rows.sort(function (a, b) { return b - a; }).forEach(function (r) { sh.deleteRow(r); });
+    _deleteMaintenanceOf(idSet);
     return { ok: true, deleted: rows.length };
   });
 }
 
 // ---- 点検履歴 ---------------------------------------------------------------
 
-function apiGetMaintenance(token, propertyId) {
-  _assertAllowed(token);
+function apiGetMaintenance(propertyId) {
+  _assertAllowed();
   const sh = _sheet(SHEETS.MAINTENANCE);
   if (sh.getLastRow() < 2) return [];
   return sh.getRange(2, 1, sh.getLastRow() - 1, 9).getValues()
@@ -399,21 +340,21 @@ function apiGetMaintenance(token, propertyId) {
     .sort(function (a, b) { return a.maintenance_date < b.maintenance_date ? 1 : -1; });
 }
 
-function apiAddMaintenance(token, propertyId, data) {
-  _assertAllowed(token);
+function apiAddMaintenance(propertyId, data) {
+  _assertAllowed();
   return _withLock(function () {
     _sheet(SHEETS.MAINTENANCE).appendRow([
       Utilities.getUuid(), propertyId,
       data.maintenance_date || '', data.maintenance_type || '',
       data.result || '', data.next_recommended_date || '',
-      data.person_in_charge || '', data.notes || '', new Date(),
+      _txt(data.person_in_charge || ''), _txt(data.notes || ''), new Date(),
     ]);
     return { ok: true };
   });
 }
 
-function apiDeleteMaintenance(token, id) {
-  _assertAllowed(token);
+function apiDeleteMaintenance(id) {
+  _assertAllowed();
   return _withLock(function () {
     const sh = _sheet(SHEETS.MAINTENANCE);
     const rowIndex = _findRowById(sh, id);
@@ -425,8 +366,8 @@ function apiDeleteMaintenance(token, id) {
 
 // ---- マスタ管理：種別（ブランド / 物件タイプ） ------------------------------
 
-function apiAddType(token, kind, label, color) {
-  _assertAllowed(token);
+function apiAddType(kind, label, color) {
+  _assertAllowed();
   if (!label) throw new Error('ラベルは必須です');
   return _withLock(function () {
     const id = Utilities.getUuid();
@@ -435,8 +376,8 @@ function apiAddType(token, kind, label, color) {
   });
 }
 
-function apiUpdateType(token, id, label, color) {
-  _assertAllowed(token);
+function apiUpdateType(id, label, color) {
+  _assertAllowed();
   return _withLock(function () {
     const sh = _sheet(SHEETS.TYPES);
     const rowIndex = _findRowById(sh, id);
@@ -446,15 +387,15 @@ function apiUpdateType(token, id, label, color) {
   });
 }
 
-function apiDeactivateType(token, id) {
-  _assertAllowed(token);
+function apiDeactivateType(id) {
+  _assertAllowed();
   return _deactivate(SHEETS.TYPES, id, 6);
 }
 
 // ---- マスタ管理：カテゴリ ---------------------------------------------------
 
-function apiAddCategory(token, label, color) {
-  _assertAllowed(token);
+function apiAddCategory(label, color) {
+  _assertAllowed();
   if (!label) throw new Error('ラベルは必須です');
   return _withLock(function () {
     const id = Utilities.getUuid();
@@ -463,8 +404,8 @@ function apiAddCategory(token, label, color) {
   });
 }
 
-function apiUpdateCategory(token, id, label, color) {
-  _assertAllowed(token);
+function apiUpdateCategory(id, label, color) {
+  _assertAllowed();
   return _withLock(function () {
     const sh = _sheet(SHEETS.CATEGORIES);
     const rowIndex = _findRowById(sh, id);
@@ -474,8 +415,8 @@ function apiUpdateCategory(token, id, label, color) {
   });
 }
 
-function apiDeactivateCategory(token, id) {
-  _assertAllowed(token);
+function apiDeactivateCategory(id) {
+  _assertAllowed();
   return _withLock(function () {
     const sh = _sheet(SHEETS.CATEGORIES);
     const rowIndex = _findRowById(sh, id);
@@ -491,8 +432,8 @@ function apiDeactivateCategory(token, id) {
 
 // ---- マスタ管理：営業所 -----------------------------------------------------
 
-function apiAddOffice(token, label) {
-  _assertAllowed(token);
+function apiAddOffice(label) {
+  _assertAllowed();
   if (!label) throw new Error('ラベルは必須です');
   return _withLock(function () {
     _sheet(SHEETS.OFFICES).appendRow([Utilities.getUuid(), label, true]);
@@ -500,8 +441,8 @@ function apiAddOffice(token, label) {
   });
 }
 
-function apiDeactivateOffice(token, id) {
-  _assertAllowed(token);
+function apiDeactivateOffice(id) {
+  _assertAllowed();
   return _deactivate(SHEETS.OFFICES, id, 3);
 }
 
@@ -509,9 +450,17 @@ function apiDeactivateOffice(token, id) {
 // 内部ヘルパー
 // =============================================================================
 
-function _assertAllowed(token) {
-  const email = Session.getActiveUser().getEmail();
-  if (!_resolveUser(token, email)) throw new Error('利用権限がありません');
+/**
+ * 利用者本人の権限で動くため、スプレッドシートを編集できる人だけが通る。
+ * 共有されていない人は getActiveSpreadsheet() やシートの読み取りで失敗する。
+ */
+function _assertAllowed() {
+  let ok = false;
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    ok = !!(ss && ss.getSheetByName(SHEETS.PROPERTIES));
+  } catch (e) { ok = false; }
+  if (!ok) throw new Error('利用権限がありません（スプレッドシートが共有されていません）');
 }
 
 function _withLock(fn) {
@@ -565,17 +514,36 @@ function _rowToProp(r) {
     brand: r[4], building_type: r[5], land_ownership: r[6],
     completed_at: r[7], phone_number: r[8],
     latitude: r[9], longitude: r[10], notes: r[11],
-    is_visible: r[12] === '' ? true : Boolean(r[12]),
+    is_visible: _bool(r[12]),
     extra: extra, created_at: r[14], updated_at: r[15],
   };
 }
 
+/** 「表示」列：空欄は表示。FALSE／false／0／非表示／いいえ（文字で入れた場合も）は非表示 */
+function _bool(v) {
+  if (v === '' || v === null || v === undefined) return true;
+  if (typeof v === 'boolean') return v;
+  const t = String(v).trim().toLowerCase();
+  return ['false', '0', '非表示', 'いいえ', 'no', 'off', '×'].indexOf(t) === -1;
+}
+
+/**
+ * シートに書く文字列の保護：
+ * - 「=」「+」で始まる値は数式として解釈されないよう先頭に ' を付ける
+ * - 0 で始まる数字だけの値は数値化で 0 が消えないよう ' を付ける
+ */
+function _txt(v) {
+  const s = (v === null || v === undefined) ? '' : String(v);
+  if (/^[=+]/.test(s) || /^0\d+$/.test(s)) return "'" + s;
+  return s;
+}
+
 function _propToRow(p) {
   return [
-    p.id, p.category, p.property_name, p.address,
+    p.id, p.category, _txt(p.property_name), _txt(p.address),
     p.brand, p.building_type, p.land_ownership,
-    p.completed_at, p.phone_number,
-    p.latitude, p.longitude, p.notes,
+    p.completed_at, String(p.phone_number || ''),   // 電話番号列は書式「書式なしテキスト」にしてから書く
+    p.latitude, p.longitude, _txt(p.notes),
     p.is_visible, (typeof p.extra === 'string' ? p.extra : JSON.stringify(p.extra || {})),
     p.created_at, p.updated_at,
   ];
@@ -585,11 +553,18 @@ function _normalizeProp(p) {
   return {
     id: p.id, category: p.category, property_name: p.property_name, address: p.address,
     brand: p.brand, building_type: p.building_type, land_ownership: p.land_ownership,
-    completed_at: _fmtCompleted(p.completed_at), phone_number: String(p.phone_number || ''),
+    completed_at: _fmtCompleted(p.completed_at), phone_number: _fmtPhone(p.phone_number),
     latitude: Number(p.latitude), longitude: Number(p.longitude),
     notes: String(p.notes || ''),
     extra: (typeof p.extra === 'string') ? JSON.parse(p.extra || '{}') : (p.extra || {}),
   };
+}
+
+/** 既に数値として保存され先頭の0が消えた電話番号を復元する（日本の番号は必ず0始まり） */
+function _fmtPhone(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (typeof v === 'number') return '0' + String(v);
+  return String(v);
 }
 
 /** シートが日付に自動変換した場合に yyyy/MM 表記へ戻す */
