@@ -6,11 +6,14 @@
  *   - このスクリプトをウェブアプリとしてデプロイして公開
  *
  * デプロイ設定：
- *   実行ユーザー   : 自分（スクリプト所有者）
- *   アクセスできる人: Google アカウントを持つ全員
- *   → Google ログインが強制され、「ログイン許可」シートに載った人だけ利用可
+ *   次のユーザーとして実行: ウェブアプリにアクセスしているユーザー
+ *   アクセスできるユーザー: Google アカウントを持つ全員
  *
- * Phase 1 からの変更：API追加のみ（シート構成は同じ。setup() 再実行は不要）
+ * 認証方式（スプレッドシート共有方式）：
+ *   アプリは利用者本人の Google アカウントの権限で動く。
+ *   このスプレッドシートを「編集者」として共有された人だけが使える
+ *   （共有されていない人はシートを読めないため、画面もデータも出ない）。
+ *   利用者の追加・停止は、スプレッドシートの「共有」で行う。URL は全員共通の1つ。
  */
 
 // ===== シート名（変更しないでください） ======================================
@@ -20,7 +23,6 @@ const SHEETS = {
   TYPES:       '種別マスタ',
   CATEGORIES:  'カテゴリマスタ',
   OFFICES:     '営業所マスタ',
-  ALLOWLIST:   'ログイン許可',
   CONFIG:      '設定',
 };
 
@@ -30,6 +32,8 @@ const PROP_COLS = [
   '施工完了年月', '電話番号', '緯度', '経度', '備考', '表示',
   '追加情報', '作成日時', '更新日時',
 ];
+
+const PHONE_COL = PROP_COLS.indexOf('電話番号') + 1;   // I列
 
 // 削除できない標準カテゴリ
 const BUILTIN_CATEGORIES = ['building', 'utility_pole', 'retention_pond', 'road'];
@@ -50,8 +54,6 @@ function setup() {
     ['id', 'コード', 'ラベル', '色', 'アイコン', '有効']);
   const offices = _ensureSheet(ss, SHEETS.OFFICES,
     ['id', 'ラベル', '有効']);
-  const allow = _ensureSheet(ss, SHEETS.ALLOWLIST,
-    ['メールアドレス', '氏名メモ', '追加日']);
   const config = _ensureSheet(ss, SHEETS.CONFIG,
     ['キー', '値', '説明']);
 
@@ -74,6 +76,7 @@ function setup() {
       [Utilities.getUuid(), 'building_type', 'other',        'その他',           '#6b7280', true],
     ]);
   }
+  _migrateBuildingTypes(types);
   if (offices.getLastRow() === 1) {
     offices.getRange(2, 1, 3, 3).setValues([
       [Utilities.getUuid(), '岐阜支社',     true],
@@ -87,12 +90,41 @@ function setup() {
       ['GOOGLE_MAPS_MAP_ID',  '', 'Google Maps の Map ID を貼り付け'],
     ]);
   }
-  if (allow.getLastRow() === 1) {
-    const me = Session.getActiveUser().getEmail();
-    if (me) allow.getRange(2, 1, 1, 3).setValues([[me, '管理者（初期登録）', new Date()]]);
-  }
+  // 電話番号列は文字列として保持する（先頭の0が消えないように）
+  const props = ss.getSheetByName(SHEETS.PROPERTIES);
+  props.getRange(2, PHONE_COL, Math.max(props.getMaxRows() - 1, 1), 1).setNumberFormat('@');
 
   SpreadsheetApp.flush();
+}
+
+/**
+ * 物件タイプを「分譲・注文・貸家・店舗・モデルハウス」の5項目に揃える（2026/11/9 打合せ決定）。
+ * - 「注文住宅」の表示名を「注文」に変える（コードはそのまま。既存の物件データは変わらない）
+ * - 「貸家」が無ければ追加する
+ * - 色が初期値のグレーのままの項目だけ、色分け用の色を付ける（手で変えた色は触らない）
+ * 何度実行しても同じ結果になる。
+ */
+function _migrateBuildingTypes(sh) {
+  const DEFAULT_GRAY = '#6b7280';
+  const PALETTE = {
+    subdivision:  '#2563eb',   // 分譲：青
+    custom_built: '#16a34a',   // 注文：緑
+    rental:       '#f59e0b',   // 貸家：黄
+    store:        '#9333ea',   // 店舗：紫
+    model_house:  '#db2777',   // モデルハウス：ピンク
+  };
+  const last = sh.getLastRow();
+  const rows = last >= 2 ? sh.getRange(2, 1, last - 1, 6).getValues() : [];
+  let hasRental = false;
+  rows.forEach(function (r, i) {
+    if (r[1] !== 'building_type') return;
+    const code = String(r[2]);
+    if (code === 'rental') hasRental = true;
+    if (code === 'custom_built' && String(r[3]) === '注文住宅') sh.getRange(i + 2, 4).setValue('注文');
+    const color = String(r[4] || '').toLowerCase();
+    if (PALETTE[code] && (!color || color === DEFAULT_GRAY)) sh.getRange(i + 2, 5).setValue(PALETTE[code]);
+  });
+  if (!hasRental) sh.appendRow([Utilities.getUuid(), 'building_type', 'rental', '貸家', PALETTE.rental, true]);
 }
 
 function _ensureSheet(ss, name, headers) {
@@ -110,40 +142,31 @@ function _ensureSheet(ss, name, headers) {
 // Webアプリ本体
 // =============================================================================
 
-function doGet() {
+function doGet(e) {
   const email = Session.getActiveUser().getEmail();
-
-  if (!_isAllowed(email)) {
+  let config;
+  try {
+    _assertAllowed();
+    config = _getConfig();
+  } catch (err) {
     return HtmlService.createHtmlOutput(
       '<div style="font-family:sans-serif;max-width:480px;margin:80px auto;text-align:center;">' +
       '<h2>利用権限がありません</h2>' +
-      '<p>このアプリを利用するには管理者の許可が必要です。</p>' +
-      '<p style="color:#888;font-size:13px;">あなたのアカウント: ' +
-      (email ? _esc(email) : '（取得できませんでした）') + '</p>' +
-      '<p style="color:#888;font-size:13px;">管理者に上記アドレスの追加を依頼してください。</p></div>'
+      '<p>このアプリは、物件マップのスプレッドシートを共有されている人だけが利用できます。</p>' +
+      (email ? '<p style="color:#888;font-size:13px;">あなたのアカウント: ' + _esc(email) + '</p>' : '') +
+      '<p style="color:#888;font-size:13px;">管理者に、このアカウントへスプレッドシートを「編集者」で共有してもらってください。</p></div>'
     ).setTitle('利用権限がありません');
   }
 
-  const config = _getConfig();
   const t = HtmlService.createTemplateFromFile('index');
   t.apiKey    = config.GOOGLE_MAPS_API_KEY || '';
   t.mapId     = config.GOOGLE_MAPS_MAP_ID  || '';
   // 経路案内の「本社から」の出発地（設定シートに OFFICE_ORIGIN 行を足せば変更可）
   t.officeOrigin = config.OFFICE_ORIGIN || '35.485869,136.897825';
-  t.userEmail = email;
+  t.userEmail = email || '';
   return t.evaluate()
     .setTitle('フクタハウス 施工物件マップ')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
-}
-
-function _isAllowed(email) {
-  if (!email) return false;
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.ALLOWLIST);
-  if (!sh || sh.getLastRow() < 2) return false;
-  const list = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues()
-    .map(function (r) { return String(r[0]).trim().toLowerCase(); })
-    .filter(String);
-  return list.indexOf(email.trim().toLowerCase()) !== -1;
 }
 
 function _getConfig() {
@@ -182,6 +205,48 @@ function apiGeocode(address) {
 function apiAddProperty(data) {
   _assertAllowed();
   return _withLock(function () {
+    const row = _buildNewProp(data);
+    _appendProps([row]);
+    return _normalizeProp(row);
+  });
+}
+
+/**
+ * CSV取込用：複数物件をまとめて追加する（1回の通信・1回の書き込み）。
+ * 行ごとに成否を返す。住所検索の失敗（上限超過を含む）はその行だけ失敗にする。
+ */
+function apiAddProperties(list) {
+  _assertAllowed();
+  if (!list || !list.length) return [];
+  return _withLock(function () {
+    const results = [], rows = [];
+    list.forEach(function (data) {
+      try {
+        const row = _buildNewProp(data);
+        rows.push(row);
+        results.push({ ok: true, property: row });
+      } catch (e) {
+        results.push({ ok: false, error: String(e && e.message || e) });
+      }
+    });
+    _appendProps(rows);
+    return results.map(function (r) {
+      return r.ok ? { ok: true, property: _normalizeProp(r.property) } : r;
+    });
+  });
+}
+
+function _appendProps(rows) {
+  if (!rows.length) return;
+  const sh = _sheet(SHEETS.PROPERTIES);
+  const start = sh.getLastRow() + 1;
+  const need = start + rows.length - 1 - sh.getMaxRows();
+  if (need > 0) sh.insertRowsAfter(sh.getMaxRows(), need);
+  sh.getRange(start, PHONE_COL, rows.length, 1).setNumberFormat('@');
+  sh.getRange(start, 1, rows.length, PROP_COLS.length).setValues(rows.map(_propToRow));
+}
+
+function _buildNewProp(data) {
     if (!data.property_name || !data.address) throw new Error('物件名と住所は必須です');
     let lat = _num(data.latitude), lng = _num(data.longitude);
     if (lat === '' || lng === '') {
@@ -205,9 +270,7 @@ function apiAddProperty(data) {
       extra: JSON.stringify(data.extra || {}),
       created_at: now, updated_at: now,
     };
-    _sheet(SHEETS.PROPERTIES).appendRow(_propToRow(row));
-    return _normalizeProp(row);
-  });
+    return row;
 }
 
 function apiUpdateProperty(id, data) {
@@ -239,6 +302,7 @@ function apiUpdateProperty(id, data) {
       extra: JSON.stringify(data.extra !== undefined ? data.extra : (existing.extra || {})),
       created_at: existing.created_at, updated_at: new Date(),
     };
+    sh.getRange(rowIndex, PHONE_COL).setNumberFormat('@');
     sh.getRange(rowIndex, 1, 1, PROP_COLS.length).setValues([_propToRow(row)]);
     return _normalizeProp(row);
   });
@@ -251,8 +315,20 @@ function apiDeleteProperty(id) {
     const rowIndex = _findRowById(sh, id);
     if (rowIndex === -1) throw new Error('対象の物件が見つかりません');
     sh.deleteRow(rowIndex);
+    const idSet = {}; idSet[String(id)] = true;
+    _deleteMaintenanceOf(idSet);
     return { ok: true };
   });
+}
+
+/** 削除した物件の点検履歴も消す（孤立データを残さない） */
+function _deleteMaintenanceOf(idSet) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.MAINTENANCE);
+  if (!sh || sh.getLastRow() < 2) return;
+  const pids = sh.getRange(2, 2, sh.getLastRow() - 1, 1).getValues();
+  for (let i = pids.length - 1; i >= 0; i--) {
+    if (idSet[String(pids[i][0])]) sh.deleteRow(i + 2);
+  }
 }
 
 /** 複数物件の一括削除（リストビューの選択削除用） */
@@ -271,6 +347,7 @@ function apiDeleteProperties(ids) {
     }
     // 下の行から消す（行番号ずれ防止）
     rows.sort(function (a, b) { return b - a; }).forEach(function (r) { sh.deleteRow(r); });
+    _deleteMaintenanceOf(idSet);
     return { ok: true, deleted: rows.length };
   });
 }
@@ -301,7 +378,7 @@ function apiAddMaintenance(propertyId, data) {
       Utilities.getUuid(), propertyId,
       data.maintenance_date || '', data.maintenance_type || '',
       data.result || '', data.next_recommended_date || '',
-      data.person_in_charge || '', data.notes || '', new Date(),
+      _txt(data.person_in_charge || ''), _txt(data.notes || ''), new Date(),
     ]);
     return { ok: true };
   });
@@ -404,9 +481,17 @@ function apiDeactivateOffice(id) {
 // 内部ヘルパー
 // =============================================================================
 
+/**
+ * 利用者本人の権限で動くため、スプレッドシートを編集できる人だけが通る。
+ * 共有されていない人は getActiveSpreadsheet() やシートの読み取りで失敗する。
+ */
 function _assertAllowed() {
-  const email = Session.getActiveUser().getEmail();
-  if (!_isAllowed(email)) throw new Error('利用権限がありません');
+  let ok = false;
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    ok = !!(ss && ss.getSheetByName(SHEETS.PROPERTIES));
+  } catch (e) { ok = false; }
+  if (!ok) throw new Error('利用権限がありません（スプレッドシートが共有されていません）');
 }
 
 function _withLock(fn) {
@@ -460,17 +545,36 @@ function _rowToProp(r) {
     brand: r[4], building_type: r[5], land_ownership: r[6],
     completed_at: r[7], phone_number: r[8],
     latitude: r[9], longitude: r[10], notes: r[11],
-    is_visible: r[12] === '' ? true : Boolean(r[12]),
+    is_visible: _bool(r[12]),
     extra: extra, created_at: r[14], updated_at: r[15],
   };
 }
 
+/** 「表示」列：空欄は表示。FALSE／false／0／非表示／いいえ（文字で入れた場合も）は非表示 */
+function _bool(v) {
+  if (v === '' || v === null || v === undefined) return true;
+  if (typeof v === 'boolean') return v;
+  const t = String(v).trim().toLowerCase();
+  return ['false', '0', '非表示', 'いいえ', 'no', 'off', '×'].indexOf(t) === -1;
+}
+
+/**
+ * シートに書く文字列の保護：
+ * - 「=」「+」で始まる値は数式として解釈されないよう先頭に ' を付ける
+ * - 0 で始まる数字だけの値は数値化で 0 が消えないよう ' を付ける
+ */
+function _txt(v) {
+  const s = (v === null || v === undefined) ? '' : String(v);
+  if (/^[=+]/.test(s) || /^0\d+$/.test(s)) return "'" + s;
+  return s;
+}
+
 function _propToRow(p) {
   return [
-    p.id, p.category, p.property_name, p.address,
+    p.id, p.category, _txt(p.property_name), _txt(p.address),
     p.brand, p.building_type, p.land_ownership,
-    p.completed_at, p.phone_number,
-    p.latitude, p.longitude, p.notes,
+    p.completed_at, String(p.phone_number || ''),   // 電話番号列は書式「書式なしテキスト」にしてから書く
+    p.latitude, p.longitude, _txt(p.notes),
     p.is_visible, (typeof p.extra === 'string' ? p.extra : JSON.stringify(p.extra || {})),
     p.created_at, p.updated_at,
   ];
@@ -480,11 +584,18 @@ function _normalizeProp(p) {
   return {
     id: p.id, category: p.category, property_name: p.property_name, address: p.address,
     brand: p.brand, building_type: p.building_type, land_ownership: p.land_ownership,
-    completed_at: _fmtCompleted(p.completed_at), phone_number: String(p.phone_number || ''),
+    completed_at: _fmtCompleted(p.completed_at), phone_number: _fmtPhone(p.phone_number),
     latitude: Number(p.latitude), longitude: Number(p.longitude),
     notes: String(p.notes || ''),
     extra: (typeof p.extra === 'string') ? JSON.parse(p.extra || '{}') : (p.extra || {}),
   };
+}
+
+/** 既に数値として保存され先頭の0が消えた電話番号を復元する（日本の番号は必ず0始まり） */
+function _fmtPhone(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (typeof v === 'number') return '0' + String(v);
+  return String(v);
 }
 
 /** シートが日付に自動変換した場合に yyyy/MM 表記へ戻す */

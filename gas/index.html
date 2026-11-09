@@ -105,6 +105,21 @@
     @media (min-width: 641px) {
       #bottom-carousel { display: none; }
     }
+
+    /* 選択中ピンの強調（一覧・ピン・カルーセルから選んだ物件） */
+    .pin-wrap { transform-origin: 50% 100%; transition: transform 0.15s ease, filter 0.15s ease; }
+    .pin-wrap.pin-active {
+      transform: scale(1.45);
+      filter: drop-shadow(0 0 3px #ffffff) drop-shadow(0 0 6px rgba(37, 99, 235, 0.95));
+    }
+    .pin-wrap.pin-active.pin-bounce { animation: pin-bounce 0.5s ease-in-out 3; }
+    @keyframes pin-bounce {
+      0%, 100% { transform: scale(1.45) translateY(0); }
+      50%      { transform: scale(1.45) translateY(-12px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .pin-wrap.pin-active.pin-bounce { animation: none; }
+    }
   </style>
 </head>
 <body class="bg-base-200 min-h-screen flex flex-col">
@@ -254,13 +269,14 @@
             <div id="legend-categories" class="grid grid-cols-2 gap-1 text-xs"></div>
           </div>
           <div>
-            <p class="text-xs text-base-content/50 mb-1">住宅の築年数（マーカー色）</p>
-            <div class="grid grid-cols-2 gap-1 text-xs">
-              <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-full bg-green-500"></span><span>5年未満</span></div>
-              <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-full bg-yellow-400"></span><span>5〜10年</span></div>
-              <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-full bg-orange-500"></span><span>10〜20年</span></div>
-              <div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-full bg-red-500"></span><span>20年以上</span></div>
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <p class="text-xs text-base-content/50">住宅のピンの色分け</p>
+              <div class="join" id="color-mode-toggle">
+                <button type="button" class="btn btn-xs join-item" data-color-mode="age">築年数</button>
+                <button type="button" class="btn btn-xs join-item" data-color-mode="type">物件種別</button>
+              </div>
             </div>
+            <div id="legend-pin-colors" class="grid grid-cols-2 gap-1 text-xs"></div>
           </div>
         </div>
 
@@ -721,6 +737,7 @@
         <i data-lucide="download" class="w-3.5 h-3.5"></i>サンプルCSVをダウンロード
       </button>
       <p id="import-mode-hint" class="text-xs text-base-content/60 mb-2"></p>
+      <div id="import-allowed-values" class="hidden text-xs bg-base-200 rounded p-2 mb-3"></div>
       <div class="form-control mb-3">
         <input type="file" id="input-csv" accept=".csv" class="file-input file-input-bordered file-input-sm w-full" />
       </div>
@@ -765,6 +782,10 @@ let currentView = 'map';
 const selectedIds = new Set();
 let maintCache = {};
 let pinMap = null, pinMarker = null;
+let pinMapTypeId = loadPref('pinMapTypeId', 'roadmap');   // ピン調整地図の表示（地図／航空写真）
+let colorMode = loadPref('colorMode', 'age');               // ピンの色分け：age=築年数 / type=物件種別
+const markerById = new Map();                              // 物件id → AdvancedMarker
+let highlightedId = null;                                  // 強調表示中のピン
 let importRows = null, importHeaders = [], importMode = 'properties', importCsvText = '';
 
 const isMobile = () => window.matchMedia('(max-width: 640px)').matches;
@@ -786,40 +807,64 @@ function escHtml(str) {
 
 function icons() { if (typeof lucide !== 'undefined') lucide.createIcons(); }
 
+// 端末ごとの表示設定（保存できない環境では既定値で動く）
+function loadPref(key, fallback) {
+  try { return localStorage.getItem('fhmap.' + key) || fallback; } catch (e) { return fallback; }
+}
+function savePref(key, value) {
+  try { localStorage.setItem('fhmap.' + key, value); } catch (e) { /* 保存できなくても動作に影響なし */ }
+}
+
 // ===== 築年数 =====
+// 施工完了年月 → 'YYYY-MM-DD'。解釈できない値は null
+// （以前は new Date() に任せていたため「Oct-20」が 2001年10月20日 と誤解釈され「20年以上」になっていた）
 function toDateStr(completed) {
   if (!completed) return null;
-  let s = String(completed).replace(/\//g, '-');
-  if (s.length === 7) s += '-01';
-  return s.substring(0, 10);
+  return parseFlexibleDate(completed);
 }
-function calcAgeYears(completed) {
+/** 経過年数（小数）。日付が無い・解釈できない場合は null */
+function ageYearsOf(completed) {
   const s = toDateStr(completed);
-  if (!s) return 0;
-  const d = new Date(s);
-  if (isNaN(d)) return 0;
+  if (!s) return null;
+  const d = new Date(s + 'T00:00:00');
+  if (isNaN(d)) return null;
   return (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
 }
+function calcAgeYears(completed) {
+  const a = ageYearsOf(completed);
+  return a === null ? 0 : a;
+}
+/** 経過年数（整数）。不明なら null */
+function ageInt(completed) {
+  const a = ageYearsOf(completed);
+  return a === null ? null : Math.floor(a);
+}
 function calcAge(completed) {
-  if (!completed) return '不明';
-  return Math.floor(calcAgeYears(completed)) + '年';
+  const n = ageInt(completed);
+  return n === null ? '不明' : n + '年';
 }
 function getMarkerColor(completed) {
-  if (!completed) return '#9CA3AF';
-  const a = calcAgeYears(completed);
+  const a = ageYearsOf(completed);
+  if (a === null) return '#9CA3AF';   // 未入力・解釈できない日付はグレー（不明）
   if (a < 5)  return '#22C55E';
   if (a < 10) return '#FACC15';
   if (a < 20) return '#F97316';
   return '#EF4444';
 }
+/** 住宅ピンの色：色分けモードに応じて 築年数 または 物件種別 の色 */
+function pinColor(p) {
+  if (colorMode === 'type') return p.building_type ? typeColor(p.building_type) : '#9CA3AF';
+  return getMarkerColor(p.completed_at);
+}
 function fmtYm(completed) {
   const s = toDateStr(completed);
-  if (!s) return '';
+  if (!s) return String(completed || '');   // 解釈できない値はそのまま見せて、直すきっかけにする
   const m = s.match(/^(\d{4})-(\d{2})/);
   return m ? m[1] + '年' + Number(m[2]) + '月' : String(completed);
 }
 
 // ===== 柔軟日付パース（utils.js 移植） =====
+const EN_MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 const ERA_MAP = { '令和': 2018, 'R': 2018, '平成': 1988, 'H': 1988, '昭和': 1925, 'S': 1925, '大正': 1911, 'T': 1911, '明治': 1867, 'M': 1867 };
 function parseFlexibleDate(input) {
   if (!input) return null;
@@ -834,11 +879,24 @@ function parseFlexibleDate(input) {
     month = era[3] ? Number(era[3]) : 1;
     day   = era[4] ? Number(era[4]) : 1;
   } else {
-    const m = s.match(/^(\d{4})[\-\/\.年]?(\d{1,2})?[月\-\/\.]?(\d{1,2})?日?$/);
-    if (!m) return null;
-    year  = Number(m[1]);
-    month = m[2] ? Number(m[2]) : 1;
-    day   = m[3] ? Number(m[3]) : 1;
+    // Excel が「2020/10」を自動変換した「Oct-20」「Oct-2020」形式（英字月-年）
+    const en = s.match(/^([A-Za-z]{3,9})[\-\/\.,]?(\d{2}|\d{4})$/);
+    if (en) {
+      month = EN_MONTHS[en[1].substring(0, 3).toLowerCase()];
+      if (!month) return null;
+      year = Number(en[2]);
+      if (en[2].length === 2) {
+        const cur = new Date().getFullYear() % 100;
+        year += (year <= cur ? 2000 : 1900);   // 「Oct-20」→2020年、「Oct-95」→1995年
+      }
+      day = 1;
+    } else {
+      const m = s.match(/^(\d{4})[\-\/\.年]?(\d{1,2})?[月\-\/\.]?(\d{1,2})?日?$/);
+      if (!m) return null;
+      year  = Number(m[1]);
+      month = m[2] ? Number(m[2]) : 1;
+      day   = m[3] ? Number(m[3]) : 1;
+    }
   }
   if (!Number.isFinite(year) || year < 1800 || year > 2200) return null;
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
@@ -1040,6 +1098,8 @@ function setupUI() {
     document.getElementById('modal-pin-adjust').close());
   document.getElementById('btn-pin-confirm').addEventListener('click', confirmPinAdjust);
   document.getElementById('btn-pin-search-address').addEventListener('click', pinSearchAddress);
+  document.querySelectorAll('#color-mode-toggle [data-color-mode]').forEach(b =>
+    b.addEventListener('click', () => setColorMode(b.dataset.colorMode)));
 
   document.getElementById('btn-manage-types').addEventListener('click', () => {
     renderTypesList();
@@ -1159,7 +1219,8 @@ function applyFilterAndRender() {
         if (!phone.includes(phoneVal)) return false;
       }
       if (ageMin !== '' || ageMax !== '') {
-        const age = calcAgeYears(p.completed_at);
+        const age = ageYearsOf(p.completed_at);
+        if (age === null) return false;
         if (ageMin !== '' && age < Number(ageMin)) return false;
         if (ageMax !== '' && age > Number(ageMax)) return false;
       }
@@ -1177,16 +1238,17 @@ function applyFilterAndRender() {
       listEl.innerHTML = '<div class="text-center text-base-content/50 py-8 text-sm">条件に一致する物件がありません</div>';
     } else {
       listEl.innerHTML = filtered.map(p => createPropertyCard(p)).join('');
+      if (highlightedId) setTimeout(() => highlightListCard(highlightedId, false), 0);
       listEl.querySelectorAll('[data-property-id]').forEach(el => {
         el.addEventListener('click', () => {
           const property = properties.find(p => p.id === el.getAttribute('data-property-id'));
           if (!property) return;
           if (isMobile()) {
             document.getElementById('side-panel').classList.add('panel-collapsed');
-            setActiveProperty(property.id, { panMap: true, scrollCarousel: true });
+            setActiveProperty(property.id, { panMap: true, scrollCarousel: true, minZoom: LIST_FOCUS_ZOOM });
           } else {
             showDetailPanel(property);
-            if (property.latitude && property.longitude) panTo(property.latitude, property.longitude);
+            if (property.latitude && property.longitude) panTo(property.latitude, property.longitude, LIST_FOCUS_ZOOM);
           }
         });
       });
@@ -1206,16 +1268,21 @@ function applyFilterAndRender() {
   icons();
 }
 
-function panTo(lat, lng, zoom) {
+// 一覧・カルーセルから選んだとき、これより引いていればここまで寄る（建物の周辺が分かる倍率）
+const LIST_FOCUS_ZOOM = 17;
+
+// 中心を移動する。拡大率は変えない（minZoom を渡したときだけ、それより引いていれば拡大する）
+function panTo(lat, lng, minZoom) {
   if (!map) return;
   map.panTo({ lat: Number(lat), lng: Number(lng) });
-  map.setZoom(zoom || 15);
+  if (minZoom && (map.getZoom() || 0) < minZoom) map.setZoom(minZoom);
 }
 
 // ===== マーカー（map.js 移植：住宅=築年数色 / 他=カテゴリバッジ） =====
 function renderMarkers(list) {
   mapMarkers.forEach(m => m.map = null);
   mapMarkers = [];
+  markerById.clear();
   if (!AdvancedMarker || !Pin) return;
 
   list.forEach(property => {
@@ -1224,7 +1291,7 @@ function renderMarkers(list) {
     let content;
     if (category === 'building') {
       content = new Pin({
-        background:  getMarkerColor(property.completed_at),
+        background:  pinColor(property),
         borderColor: '#ffffff',
         glyphColor:  '#ffffff',
         scale: 1.2,
@@ -1232,9 +1299,13 @@ function renderMarkers(list) {
     } else {
       content = buildCategoryMarker(category);
     }
+    // 強調表示（拡大・跳ねる）用に外枠で包む
+    const wrap = document.createElement('div');
+    wrap.className = 'pin-wrap';
+    wrap.appendChild(content);
     const marker = new AdvancedMarker({
       position: { lat: Number(property.latitude), lng: Number(property.longitude) },
-      map, title: property.property_name, content,
+      map, title: property.property_name, content: wrap,
     });
     marker.addListener('click', () => {
       if (isMobile()) {
@@ -1243,8 +1314,48 @@ function renderMarkers(list) {
         showDetailPanel(property);
         if (property.latitude && property.longitude) panTo(property.latitude, property.longitude);
       }
+      highlightListCard(property.id, true);   // 左の一覧で該当物件を色付けして見える位置へ
     });
     mapMarkers.push(marker);
+    markerById.set(property.id, marker);
+  });
+
+  // 再描画（絞り込み変更など）後も強調を引き継ぐ
+  if (highlightedId) highlightMarker(highlightedId);
+}
+
+/** 指定した物件のピンを強調する（null で解除）。bounce: true で数回跳ねさせる */
+function highlightMarker(id, opts) {
+  opts = opts || {};
+  if (highlightedId && highlightedId !== id) {
+    const prev = markerById.get(highlightedId);
+    if (prev) {
+      prev.zIndex = null;
+      prev.content.classList.remove('pin-active', 'pin-bounce');
+    }
+  }
+  highlightedId = id || null;
+  highlightListCard(highlightedId, opts.scrollList);
+  if (!highlightedId) return;
+  const m = markerById.get(highlightedId);
+  if (!m) return;
+  m.zIndex = 10000;   // 重なったピンの一番手前に出す
+  m.content.classList.add('pin-active');
+  if (opts.bounce) {
+    m.content.classList.remove('pin-bounce');
+    void m.content.offsetWidth;   // アニメーションを最初から再生させる
+    m.content.classList.add('pin-bounce');
+  }
+}
+
+/** 左の物件一覧で、選択中の物件カードを色付けする（scroll=true ならその位置までスクロール） */
+function highlightListCard(id, scroll) {
+  document.querySelectorAll('#property-list [data-property-id]').forEach(el => {
+    const on = !!id && el.getAttribute('data-property-id') === id;
+    el.classList.toggle('ring-2', on);
+    el.classList.toggle('ring-primary', on);
+    el.classList.toggle('bg-primary/10', on);
+    if (on && scroll) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
 }
 
@@ -1263,21 +1374,42 @@ function buildCategoryMarker(categoryCode) {
 }
 
 // ===== サイドバー物件カード =====
+/**
+ * 区分バッジ：物件タイプと土地区分を1つにまとめる（例「注文・自社土地」「注文・施主所有土地」「分譲」）。
+ * 分譲は自社土地が前提なので、土地区分が自社土地なら省く。
+ */
+function kindBadge(p, extraClass) {
+  if ((p.category || 'building') !== 'building') return '';
+  const tLbl = typeLabel(p.building_type);
+  const land = p.land_ownership || '';
+  const omitLand = p.building_type === 'subdivision' && land === '自社土地';
+  const text = [tLbl, omitLand ? '' : land].filter(Boolean).join('・');
+  if (!text) return '';
+  const style = tLbl ? 'background:' + typeColor(p.building_type) : '';
+  const cls = tLbl ? 'border-0 text-white' : 'badge-accent';
+  return '<span class="badge badge-xs ' + cls + ' ' + (extraClass || '') + '" style="' + style + '">' + escHtml(text) + '</span>';
+}
+/** 一覧（表）の物件名の下に出す区分バッジ */
+function rowBadges(p) {
+  const b = kindBadge(p);
+  return b ? '<div class="flex flex-wrap gap-1 mt-0.5">' + b + '</div>' : '';
+}
+
 function createPropertyCard(p) {
   const category      = p.category || 'building';
   const categoryLabel = getCategoryLabel(category);
   const categoryColor = getCategoryColor(category);
   const isBuilding    = category === 'building';
-  const dotColor      = isBuilding ? getMarkerColor(p.completed_at) : categoryColor;
+  const dotColor      = isBuilding ? pinColor(p) : categoryColor;
   const brandLbl = isBuilding ? typeLabel(p.brand) : '';
   const brandClr = isBuilding ? typeColor(p.brand) : '';
   const typeLbl  = isBuilding ? typeLabel(p.building_type) : '';
   const typeClr  = isBuilding ? typeColor(p.building_type) : '';
-  const ageText  = (isBuilding && p.completed_at) ? '築' + Math.floor(calcAgeYears(p.completed_at)) + '年' : '';
+  const ageN     = isBuilding ? ageInt(p.completed_at) : null;
+  const ageText  = ageN !== null ? '築' + ageN + '年' : '';
 
   const buildingBadges = isBuilding ? (
     (brandLbl ? '<span class="badge badge-sm border-0 text-white" style="background:' + brandClr + '">' + escHtml(brandLbl) + '</span>' : '') +
-    (typeLbl ? '<span class="badge badge-sm border-0 text-white" style="background:' + typeClr + '">' + escHtml(typeLbl) + '</span>' : '') +
     '<span class="badge badge-sm badge-ghost">' + (ageText || '不明') + '</span>' +
     (p.phone_number ? '<span class="badge badge-sm badge-ghost">' + escHtml(p.phone_number) + '</span>' : '')
   ) : '';
@@ -1287,7 +1419,7 @@ function createPropertyCard(p) {
     '<span class="mt-1 inline-block w-3 h-3 rounded-full flex-shrink-0" style="background:' + dotColor + '"></span>' +
     '<div class="flex-1 min-w-0">' +
     '<div class="flex items-center gap-1"><p class="font-semibold text-sm truncate">' + escHtml(p.property_name) + '</p>' +
-    (isBuilding && p.land_ownership ? '<span class="badge badge-xs badge-accent flex-shrink-0">' + escHtml(p.land_ownership) + '</span>' : '') +
+    kindBadge(p, 'flex-shrink-0') +
     '</div>' +
     '<p class="text-xs text-base-content/60 truncate">' + escHtml(p.address) + '</p>' +
     '<div class="flex gap-1 mt-1 flex-wrap">' +
@@ -1305,7 +1437,7 @@ function renderBottomCarousel(list) {
   track.querySelectorAll('[data-carousel-id]').forEach(el => {
     el.addEventListener('click', e => {
       if (e.target.closest('[data-carousel-detail]')) return;
-      setActiveProperty(el.dataset.carouselId, { panMap: true, scrollCarousel: false });
+      setActiveProperty(el.dataset.carouselId, { panMap: true, scrollCarousel: false, minZoom: LIST_FOCUS_ZOOM });
     });
   });
   track.querySelectorAll('[data-carousel-detail]').forEach(btn => {
@@ -1328,7 +1460,8 @@ function createCarouselCard(p) {
     const brandLbl = typeLabel(p.brand);
     const typeLbl  = typeLabel(p.building_type);
     const land     = p.land_ownership || '';
-    const ageText  = p.completed_at ? '築' + Math.floor(calcAgeYears(p.completed_at)) + '年' : '';
+    const ageN     = ageInt(p.completed_at);
+    const ageText  = ageN !== null ? '築' + ageN + '年' : '';
     const phone    = p.phone_number || '';
     infoLines =
       (brandLbl ? '<div class="text-xs truncate"><span class="text-base-content/50">ブランド: </span>' + escHtml(brandLbl) + '</div>' : '') +
@@ -1385,8 +1518,9 @@ function setActiveProperty(id, opts) {
     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
   }
   if (opts.panMap && property && property.latitude && property.longitude) {
-    panTo(property.latitude, property.longitude);
+    panTo(property.latitude, property.longitude, opts.minZoom);
   }
+  highlightMarker(id, { bounce: !!opts.panMap });
 }
 
 // ===== ビュー切替 =====
@@ -1445,14 +1579,14 @@ function renderListView(list) {
     '</tr></thead><tbody>' +
     list.map(p => {
       const completed = p.completed_at ? fmtYm(p.completed_at) : '—';
-      const age = p.completed_at ? Math.floor(calcAgeYears(p.completed_at)) + '年' : '不明';
-      const color = getMarkerColor(p.completed_at);
+      const age = calcAge(p.completed_at);
+      const color = pinColor(p);
       return '<tr class="hover:bg-base-200 transition-colors" data-list-id="' + p.id + '">' +
         '<td class="w-8"><input type="checkbox" class="checkbox checkbox-xs list-row-check" data-id="' + p.id + '" ' + (selectedIds.has(p.id) ? 'checked' : '') + ' /></td>' +
         '<td class="cursor-pointer" data-role="open"><div class="flex items-center gap-2">' +
         '<span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:' + color + '"></span>' +
         '<div class="min-w-0"><p class="font-medium text-sm truncate max-w-[140px]">' + escHtml(p.property_name) + '</p>' +
-        (p.land_ownership ? '<span class="badge badge-xs badge-accent">' + escHtml(p.land_ownership) + '</span>' : '') +
+        rowBadges(p) +
         '</div></div></td>' +
         '<td class="hidden lg:table-cell text-xs text-base-content/70 max-w-[220px] cursor-pointer" data-role="open"><span class="block truncate">' + escHtml(p.address) + '</span></td>' +
         '<td class="text-xs cursor-pointer" data-role="open">' + escHtml(typeLabel(p.brand)) + '</td>' +
@@ -1541,6 +1675,7 @@ function showDetailPanel(property) {
   const dp = document.getElementById('detail-panel');
   dp.classList.remove('detail-collapsed');
   dp.classList.remove('translate-x-full');
+  highlightMarker(property.id, { bounce: true });
   icons();
 }
 
@@ -1548,6 +1683,8 @@ function hideDetailPanel() {
   document.getElementById('detail-panel').classList.add('translate-x-full');
   document.getElementById('route-info').classList.add('hidden');
   currentProperty = null;
+  // スマホでカルーセル選択中ならその物件の強調は残す
+  highlightMarker(isMobile() ? activeId : null);
 }
 
 function detailRow(label, value) {
@@ -1910,7 +2047,19 @@ async function openPinAdjust() {
   setTimeout(() => {
     pinMap = new google.maps.Map(document.getElementById('pin-adjust-map'), {
       center: { lat, lng }, zoom: 17, mapId: MAP_ID || undefined,
-      gestureHandling: 'greedy', mapTypeControl: false, streetViewControl: false,
+      mapTypeId: pinMapTypeId,
+      gestureHandling: 'greedy', streetViewControl: false,
+      // 地図／航空写真（ラベル付き）を切り替えられるようにする
+      mapTypeControl: true,
+      mapTypeControlOptions: {
+        style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
+        position: google.maps.ControlPosition.TOP_LEFT,
+        mapTypeIds: ['roadmap', 'hybrid'],
+      },
+    });
+    pinMap.addListener('maptypeid_changed', () => {
+      pinMapTypeId = pinMap.getMapTypeId();
+      savePref('pinMapTypeId', pinMapTypeId);   // 次に開いたときも同じ表示で始める
     });
     pinMarker = new AdvancedMarker({ map: pinMap, position: { lat, lng }, gmpDraggable: true });
     updatePinCoords(lat, lng);
@@ -1980,6 +2129,7 @@ function renderBrandSelects() {
   fillTypeSelect(document.getElementById('filter-brand'),              brands,        'すべて');
   fillTypeSelect(document.getElementById('form-building-type-select'), buildingTypes, '選択...');
   fillTypeSelect(document.getElementById('filter-building-type'),      buildingTypes, 'すべて');
+  if (document.getElementById('legend-pin-colors')) renderPinColorLegend();
 }
 
 function renderCategorySelects() {
@@ -2008,12 +2158,32 @@ function renderCategoryFilter() {
     cb.addEventListener('change', applyFilterAndRender));
 }
 
+const AGE_LEGEND = [
+  ['#22C55E', '5年未満'], ['#FACC15', '5〜10年'], ['#F97316', '10〜20年'], ['#EF4444', '20年以上'], ['#9CA3AF', '不明'],
+];
+function renderPinColorLegend() {
+  const items = colorMode === 'type'
+    ? buildingTypes.map(t => [t.color || '#6b7280', t.label]).concat([['#9CA3AF', '未設定']])
+    : AGE_LEGEND;
+  document.getElementById('legend-pin-colors').innerHTML = items.map(([c, l]) =>
+    '<div class="flex items-center gap-2"><span class="inline-block w-3 h-3 rounded-full" style="background:' + escHtml(c) + '"></span><span>' + escHtml(l) + '</span></div>').join('');
+  document.querySelectorAll('#color-mode-toggle [data-color-mode]').forEach(b =>
+    b.classList.toggle('btn-primary', b.dataset.colorMode === colorMode));
+}
+function setColorMode(mode) {
+  colorMode = mode === 'type' ? 'type' : 'age';
+  savePref('colorMode', colorMode);
+  renderPinColorLegend();
+  applyFilterAndRender();
+}
+
 function renderCategoryLegend() {
   document.getElementById('legend-categories').innerHTML = categories.map(c =>
     '<div class="flex items-center gap-2">' +
     '<span class="inline-flex items-center justify-center w-4 h-4 rounded-full text-white" style="background:' + escHtml(c.color || '#6b7280') + '">' +
     '<i data-lucide="' + escHtml(c.icon || 'map-pin') + '" class="w-2.5 h-2.5"></i></span>' +
     '<span>' + escHtml(c.label) + '</span></div>').join('');
+  renderPinColorLegend();
   icons();
 }
 
@@ -2137,8 +2307,8 @@ function exportFilteredCsv() {
       isBuilding ? typeLabel(p.brand) : '',
       isBuilding ? typeLabel(p.building_type) : '',
       isBuilding ? (p.land_ownership || '') : '',
-      isBuilding && p.completed_at ? String(toDateStr(p.completed_at)).substring(0, 7) : '',
-      isBuilding && p.completed_at ? String(Math.floor(calcAgeYears(p.completed_at))) : '',
+      isBuilding && p.completed_at ? (toDateStr(p.completed_at) || String(p.completed_at)).substring(0, 7) : '',
+      isBuilding && ageInt(p.completed_at) !== null ? String(ageInt(p.completed_at)) : '',
       isBuilding ? (p.phone_number || '') : '',
       p.notes || '',
     ];
@@ -2163,11 +2333,11 @@ function exportFilteredCsv() {
 const FIELD_DEFS = [
   { key: 'property_name',  label: '物件名',       required: true,  hint: '例: ○○様邸' },
   { key: 'address',        label: '住所',         required: true,  hint: '例: 岐阜県関市…' },
-  { key: 'category',       label: 'カテゴリ',     required: false, hint: '住宅/電柱/調整池/道路' },
-  { key: 'brand',          label: 'ブランド',     required: false, hint: 'フクタハウス 等' },
-  { key: 'building_type',  label: '物件タイプ',   required: false, hint: '注文住宅 等' },
-  { key: 'land_ownership', label: '土地区分',     required: false, hint: '自社土地 等' },
-  { key: 'completed_at',   label: '施工完了年月', required: false, hint: '例: 2020/10' },
+  { key: 'category',       label: 'カテゴリ',     required: false, hint: '上の一覧の文言' },
+  { key: 'brand',          label: 'ブランド',     required: false, hint: '上の一覧の文言' },
+  { key: 'building_type',  label: '物件タイプ',   required: false, hint: '上の一覧の文言' },
+  { key: 'land_ownership', label: '土地区分',     required: false, hint: '上の一覧の文言' },
+  { key: 'completed_at',   label: '施工完了年月', required: false, hint: '例: 2020年10月' },
   { key: 'phone_number',   label: '電話番号',     required: false, hint: '' },
   { key: 'notes',          label: '備考',         required: false, hint: '' },
   { key: 'latitude',       label: '緯度',         required: false, hint: '無ければ住所から自動変換' },
@@ -2211,6 +2381,7 @@ function applyImportMode(mode) {
     hint.innerHTML = '住宅だけでなく <span class="font-semibold">電柱・調整池・道路</span> など全カテゴリの登録に対応しています。' +
       'CSV に「カテゴリ」列を含めるか、未指定の行は住宅として扱われます。';
   }
+  renderAllowedValues();
   importRows = null; importCsvText = ''; importHeaders = [];
   document.getElementById('input-csv').value = '';
   document.getElementById('input-csv').disabled = false;
@@ -2224,10 +2395,57 @@ function applyImportMode(mode) {
   document.getElementById('progress-bar').value = 0;
 }
 
+// CSVの「土地区分」に入れられる文言（画面の選択肢と同じ）
+const LAND_OPTIONS = ['自社土地', '施主所有土地', 'その他'];
+
+/** CSVの選択式の列ごとに、入力できる文言の一覧 */
+function allowedValueLists() {
+  return [
+    { key: 'category',       label: 'カテゴリ',   values: categories.map(c => c.label) },
+    { key: 'brand',          label: 'ブランド',   values: brands.map(t => t.label) },
+    { key: 'building_type',  label: '物件タイプ', values: buildingTypes.map(t => t.label) },
+    { key: 'land_ownership', label: '土地区分',   values: LAND_OPTIONS },
+  ];
+}
+
+/** 取込画面に「この文言で入力してください」を表示する（物件タブのみ） */
+function renderAllowedValues() {
+  const box = document.getElementById('import-allowed-values');
+  if (!box) return;
+  if (importMode === 'maintenance') { box.classList.add('hidden'); return; }
+  box.innerHTML = '<p class="font-semibold mb-1">選択式の項目は、次の文言のどれかで入力してください（空欄も可）</p>' +
+    allowedValueLists().map(l =>
+      '<div class="flex gap-2"><span class="w-20 flex-shrink-0 text-base-content/60">' + escHtml(l.label) + '</span>' +
+      '<span>' + l.values.map(v => '<code class="bg-base-100 px-1 rounded">' + escHtml(v) + '</code>').join(' ') + '</span></div>').join('') +
+    '<p class="text-base-content/50 mt-1">施工完了年月は「2020年10月」の形で入力してください。</p>';
+  box.classList.remove('hidden');
+}
+
+/** 文言の照合用：空白・全角半角・末尾の「住宅」の違いを無視する（例「注文住宅」＝「注文」） */
+function looseKey(v) {
+  return normalizeStr(String(v || '').replace(/[\s　]+/g, '')).replace(/住宅$/, '');
+}
+/** 選択式の値を照合し、一致した値（コードまたは文言）を返す。一致しなければ null */
+function matchAllowed(key, raw) {
+  const v = String(raw || '').trim();
+  if (!v) return '';
+  if (key === 'land_ownership') {
+    const hit = LAND_OPTIONS.find(o => looseKey(o) === looseKey(v));
+    return hit || null;
+  }
+  const list = key === 'category' ? categories : key === 'brand' ? brands : buildingTypes;
+  const hit = list.find(x => x.label === v || x.code === v) ||
+              list.find(x => looseKey(x.label) === looseKey(v));
+  return hit ? hit.code : null;
+}
+
 function downloadSampleCsv() {
+  const lbl = (list, code, fb) => { const t = list.find(x => x.code === code); return t ? t.label : (list[0] ? list[0].label : fb); };
   const sample = importMode === 'maintenance'
     ? '物件名,住所,点検日,種別,内容・結果,次回推奨日,担当者,備考\nサンプル邸,岐阜県関市若草通4丁目,2024/05/01,定期点検,異常なし,2025/05/01,田中,\n'
-    : 'カテゴリ,物件名,住所,ブランド,物件タイプ,土地区分,施工完了年月,電話番号,備考\n住宅,サンプル邸,岐阜県関市若草通4丁目,フクタハウス,注文住宅,施主所有土地,2020/10,0575-00-0000,サンプルです\n';
+    : 'カテゴリ,物件名,住所,ブランド,物件タイプ,土地区分,施工完了年月,電話番号,備考\n' +
+      [lbl(categories, 'building', '住宅'), 'サンプル邸', '岐阜県関市若草通4丁目', lbl(brands, 'fukuta_house', 'フクタハウス'),
+       lbl(buildingTypes, 'custom_built', '注文'), '施主所有土地', '2020年10月', '0575-00-0000', 'サンプルです'].join(',') + '\n';
   const blob = new Blob(['\uFEFF' + sample], { type: 'text/csv;charset=utf-8;' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -2296,6 +2514,28 @@ async function runImport() {
   }
   document.getElementById('import-errors').classList.add('hidden');
 
+  // 選択式の列に、一覧にない文言が入っていないか先に確認する
+  if (importMode === 'properties') {
+    const bad = [];
+    importRows.forEach((row, i) => {
+      allowedValueLists().forEach(l => {
+        const ci = mapping[l.key] ? importHeaders.indexOf(mapping[l.key]) : -1;
+        if (ci === -1) return;
+        const v = String(row[ci] || '').trim();
+        if (v && matchAllowed(l.key, v) === null) bad.push((i + 2) + '行目 ' + l.label + '「' + v + '」');
+      });
+    });
+    if (bad.length) {
+      document.getElementById('import-error-list').innerHTML =
+        bad.slice(0, 20).map(m => '<li>' + escHtml(m) + '</li>').join('') +
+        (bad.length > 20 ? '<li>…ほか ' + (bad.length - 20) + ' 件</li>' : '');
+      document.getElementById('import-errors').classList.remove('hidden');
+      if (!confirm('一覧にない文言が ' + bad.length + ' 件あります（画面の赤字を参照）。\n\n' +
+                   'このまま取り込むと、その項目は空欄で登録されます。\n取り込みますか？\n\n' +
+                   '（キャンセルしてCSVを直す場合は、上の「入力できる文言」に合わせてください）')) return;
+    }
+  }
+
   const btnImport = document.getElementById('btn-do-import');
   const btnCancel = document.getElementById('btn-cancel-import');
   btnImport.disabled = true;
@@ -2315,6 +2555,24 @@ async function runImport() {
   const norm = normalizeStr;
   let ok = 0, skip = 0, fail = 0;
   const failMsgs = [];
+  const warnMsgs = [];
+  // 物件はまとめて送る（1件ずつ送ると数百件で数分かかるため）
+  const IMPORT_CHUNK = 20;
+  let batch = [];
+  const seenKeys = new Set();
+  const flushBatch = async () => {
+    if (!batch.length) return;
+    const items = batch; batch = [];
+    try {
+      const results = await gs('apiAddProperties', items.map(x => x.payload));
+      results.forEach((r, k) => {
+        if (r.ok) { properties.push(r.property); ok++; }
+        else { fail++; failMsgs.push(items[k].line + '行目: ' + r.error); }
+      });
+    } catch (err) {
+      items.forEach(x => { fail++; failMsgs.push(x.line + '行目: ' + err.message); });
+    }
+  };
 
   for (let i = 0; i < importRows.length; i++) {
     const row = importRows[i];
@@ -2325,25 +2583,29 @@ async function runImport() {
     if (!name || !address) { fail++; failMsgs.push((i + 2) + '行目: 物件名/住所が空'); continue; }
 
     if (importMode === 'properties') {
-      if (properties.some(p => norm(p.property_name) === norm(name) && norm(p.address) === norm(address))) { skip++; continue; }
+      const key = norm(name) + '\u0000' + norm(address);
+      if (seenKeys.has(key) || properties.some(p => norm(p.property_name) === norm(name) && norm(p.address) === norm(address))) { skip++; continue; }
+      seenKeys.add(key);
       const completedRaw = get(row, 'completed_at');
+      const completedParsed = completedRaw ? parseFlexibleDate(completedRaw) : '';
+      if (completedRaw && !completedParsed) {
+        // 解釈できない日付は登録しない（誤った築年数で色分けされるのを防ぐ）
+        warnMsgs.push((i + 2) + '行目「' + name + '」: 施工完了年月「' + completedRaw + '」を解釈できないため空欄で登録');
+      }
       const payload = {
         property_name: name, address: address,
-        category: categoryCodeOf(get(row, 'category')) || 'building',
-        brand: typeCodeOf(brands, get(row, 'brand')),
-        building_type: typeCodeOf(buildingTypes, get(row, 'building_type')),
-        land_ownership: get(row, 'land_ownership'),
-        completed_at: completedRaw ? (parseFlexibleDate(completedRaw) || completedRaw) : '',
+        category: matchAllowed('category', get(row, 'category')) || 'building',
+        brand: matchAllowed('brand', get(row, 'brand')) || '',
+        building_type: matchAllowed('building_type', get(row, 'building_type')) || '',
+        land_ownership: matchAllowed('land_ownership', get(row, 'land_ownership')) || '',
+        completed_at: completedParsed || '',
         phone_number: get(row, 'phone_number'),
         notes: get(row, 'notes'),
         latitude: get(row, 'latitude'), longitude: get(row, 'longitude'),
         extra: {},
       };
-      try {
-        const saved = await gs('apiAddProperty', payload);
-        properties.push(saved);
-        ok++;
-      } catch (err) { fail++; failMsgs.push((i + 2) + '行目: ' + err.message); }
+      batch.push({ payload, line: i + 2 });
+      if (batch.length >= IMPORT_CHUNK) await flushBatch();
     } else {
       const target = properties.find(p => norm(p.property_name) === norm(name) && norm(p.address) === norm(address));
       if (!target) { fail++; failMsgs.push((i + 2) + '行目: 物件が見つかりません「' + name + '」'); continue; }
@@ -2361,6 +2623,7 @@ async function runImport() {
       } catch (err) { fail++; failMsgs.push((i + 2) + '行目: ' + err.message); }
     }
   }
+  await flushBatch();
 
   applyFilterAndRender();
   txt.textContent = '完了しました';
@@ -2370,20 +2633,11 @@ async function runImport() {
     '<span class="text-success">✅ 成功 ' + ok + ' 件</span>' +
     (skip > 0 ? '　<span class="text-warning">⏭ 完全重複スキップ ' + skip + ' 件</span>' : '') +
     (fail > 0 ? '　<span class="text-error">❌ 失敗 ' + fail + ' 件</span>' +
-      '<div class="text-xs text-error text-left mt-2">' + failMsgs.slice(0, 10).map(escHtml).join('<br>') + '</div>' : '');
+      '<div class="text-xs text-error text-left mt-2">' + failMsgs.slice(0, 10).map(escHtml).join('<br>') + '</div>' : '') +
+    (warnMsgs.length > 0 ? '<div class="text-xs text-warning text-left mt-2">⚠ 要確認 ' + warnMsgs.length + ' 件（物件は登録済み。編集画面から施工完了年月を入力してください）<br>' +
+      warnMsgs.slice(0, 10).map(escHtml).join('<br>') + (warnMsgs.length > 10 ? '<br>…ほか ' + (warnMsgs.length - 10) + ' 件' : '') + '</div>' : '');
   btnCancel.disabled = false;
   btnCancel.textContent = '閉じる';
-}
-
-function categoryCodeOf(labelOrCode) {
-  if (!labelOrCode) return '';
-  const c = categories.find(x => x.label === labelOrCode || x.code === labelOrCode);
-  return c ? c.code : '';
-}
-function typeCodeOf(list, labelOrCode) {
-  if (!labelOrCode) return '';
-  const t = list.find(x => x.label === labelOrCode || x.code === labelOrCode);
-  return t ? t.code : labelOrCode;
 }
 
 function parseCsv(text) {
