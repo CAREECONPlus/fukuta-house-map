@@ -76,6 +76,7 @@ function setup() {
       [Utilities.getUuid(), 'building_type', 'other',        'その他',           '#6b7280', true],
     ]);
   }
+  _migrateBuildingTypes(types);
   if (offices.getLastRow() === 1) {
     offices.getRange(2, 1, 3, 3).setValues([
       [Utilities.getUuid(), '岐阜支社',     true],
@@ -94,6 +95,36 @@ function setup() {
   props.getRange(2, PHONE_COL, Math.max(props.getMaxRows() - 1, 1), 1).setNumberFormat('@');
 
   SpreadsheetApp.flush();
+}
+
+/**
+ * 物件タイプを「分譲・注文・貸家・店舗・モデルハウス」の5項目に揃える（2026/11/9 打合せ決定）。
+ * - 「注文住宅」の表示名を「注文」に変える（コードはそのまま。既存の物件データは変わらない）
+ * - 「貸家」が無ければ追加する
+ * - 色が初期値のグレーのままの項目だけ、色分け用の色を付ける（手で変えた色は触らない）
+ * 何度実行しても同じ結果になる。
+ */
+function _migrateBuildingTypes(sh) {
+  const DEFAULT_GRAY = '#6b7280';
+  const PALETTE = {
+    subdivision:  '#2563eb',   // 分譲：青
+    custom_built: '#16a34a',   // 注文：緑
+    rental:       '#f59e0b',   // 貸家：黄
+    store:        '#9333ea',   // 店舗：紫
+    model_house:  '#db2777',   // モデルハウス：ピンク
+  };
+  const last = sh.getLastRow();
+  const rows = last >= 2 ? sh.getRange(2, 1, last - 1, 6).getValues() : [];
+  let hasRental = false;
+  rows.forEach(function (r, i) {
+    if (r[1] !== 'building_type') return;
+    const code = String(r[2]);
+    if (code === 'rental') hasRental = true;
+    if (code === 'custom_built' && String(r[3]) === '注文住宅') sh.getRange(i + 2, 4).setValue('注文');
+    const color = String(r[4] || '').toLowerCase();
+    if (PALETTE[code] && (!color || color === DEFAULT_GRAY)) sh.getRange(i + 2, 5).setValue(PALETTE[code]);
+  });
+  if (!hasRental) sh.appendRow([Utilities.getUuid(), 'building_type', 'rental', '貸家', PALETTE.rental, true]);
 }
 
 function _ensureSheet(ss, name, headers) {
